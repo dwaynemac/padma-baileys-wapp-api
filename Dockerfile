@@ -12,7 +12,7 @@ RUN npm ci --omit=dev
 COPY . .
 
 # 4. Expose API port
-EXPOSE 3000
+EXPOSE 8300
 
 # 5. Run the server
 CMD ["node", "index.js"]

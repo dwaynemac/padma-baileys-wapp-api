@@ -19,6 +19,7 @@ import {
 import P from "pino";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs/promises";
 
 // ---------- Globals ----------
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,8 +30,10 @@ const logger = P({ level: "info" });
 // ---------- Helpers ----------
 async function createSession(id) {
   if (sessions.has(id)) return sessions.get(id);
-  const authDir = path.join(__dirname, "auth", id);
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  const sessionDir = path.join(__dirname, "sessionsData", id);
+  // Ensure the directory exists
+  await fs.mkdir(sessionDir, { recursive: true });
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
   const { version } = await fetchLatestBaileysVersion();
   const store = makeInMemoryStore({ logger });
 
