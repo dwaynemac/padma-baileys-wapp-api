@@ -9,80 +9,23 @@
 
 import express from "express";
 import qrcode from "qrcode";
-import {
-  makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  makeInMemoryStore,
-} from "@whiskeysockets/baileys";
+import { DisconnectReason } from "@whiskeysockets/baileys";
 import P from "pino";
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs/promises";
+import { 
+  createSession, 
+  requireSession, 
+  apiKeyAuth, 
+  deleteSession,
+  getActiveSessions,
+  sessions 
+} from "./helpers.js";
 
 // ---------- Globals ----------
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
-const sessions = new Map(); // sessionId -> { socket, store }
-const logger = P({ level: "info" });
-
-// ---------- Helpers ----------
-async function createSession(id) {
-  if (sessions.has(id)) return sessions.get(id);
-  const sessionDir = path.join(__dirname, "sessionsData", id);
-  // Ensure the directory exists
-  await fs.mkdir(sessionDir, { recursive: true });
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-  const { version } = await fetchLatestBaileysVersion();
-  const store = makeInMemoryStore({ logger });
-
-  const sock = makeWASocket({
-    version,
-    logger,
-    printQRInTerminal: false,
-    auth: state,
-    browser: ['PADMA', '', ''],
-  });
-
-  store.bind(sock.ev);
-
-  // Persist credentials on update
-  sock.ev.on("creds.update", saveCreds);
-
-  // Bubble QR to waiting HTTP call
-  let qrResolver;
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr && qrResolver) {
-      qrResolver(qr);
-      qrResolver = null;
-    }
-    if (connection === "close") {
-      const reason = lastDisconnect?.error?.output?.statusCode;
-      logger.warn({ id, reason }, "Socket closed");
-      sessions.delete(id);
-    }
-  });
-
-  // Utility function that waits for a fresh QR string
-  function getNewQr() {
-    return new Promise((resolve) => {
-      qrResolver = resolve;
-    });
-  }
-
-  const session = { sock, store, getNewQr };
-  sessions.set(id, session);
-  return session;
-}
-
-function requireSession(req, res, next) {
-  const { sessionId } = req.params;
-  if (!sessions.has(sessionId)) return res.status(404).json({ error: "Session not found" });
-  req.session = sessions.get(sessionId);
-  next();
-}
+const logger = P({ level: "debug" });
 
 // ---------- Express API ----------
 const app = express();
@@ -92,14 +35,7 @@ app.use(express.json());
  All requests should have x-api-key header with valid api key.
   */
 const API_KEY = process.env.API_KEY || "your-secure-api-key";
-function apiKeyAuth(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== API_KEY) {
-    return res.status(401).json({ error: 'Api key not found or invalid' });
-  }
-  next();
-}
-app.use(apiKeyAuth);
+app.use(apiKeyAuth(API_KEY));
 
 app.get("/", (req, res) => {
   res.json({ status: "SERVER RUNNING"})
@@ -110,7 +46,7 @@ app.get("/", (req, res) => {
  * Lists all active sessions.
  */
 app.get("/sessions", (req, res) => {
-  const activeSessions = Array.from(sessions.keys()).map(sessionId => {
+  const activeSessions = getActiveSessions().map(sessionId => {
     const { sock } = sessions.get(sessionId);
     return {
       id: sessionId,
@@ -130,7 +66,7 @@ app.get("/sessions", (req, res) => {
  */
 app.post("/sessions/:sessionId", async (req, res) => {
   const { sessionId } = req.params;
-  const { sock, getNewQr } = await createSession(sessionId);
+  const { sock, getNewQr } = await createSession(sessionId, logger, __dirname);
   if (sock.user) {
     return res.json({ status: "already_logged_in" });
   }
@@ -265,8 +201,8 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   const { sessionId } = req.params;
   const { sock } = req.session;
   await sock.logout();
-  sessions.delete(sessionId);
+  deleteSession(sessionId);
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.5 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.7 running on http://localhost:${PORT}`));
