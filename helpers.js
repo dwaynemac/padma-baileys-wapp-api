@@ -19,7 +19,7 @@ const sessions = new Map(); // sessionId -> { socket, store }
  * @returns {Promise<object>} Session object with sock, store, and getNewQr
  */
 async function createSession(id, logger, dirName) {
-  logger.debug("createSession", id, dirName)
+  logger.debug("called createSession", id, dirName)
   if (sessions.has(id)) return sessions.get(id);
   const sessionDir = path.join(dirName, "sessionsData", id);
   // Ensure the directory exists
@@ -28,12 +28,14 @@ async function createSession(id, logger, dirName) {
   const { version } = await fetchLatestBaileysVersion();
   const store = makeInMemoryStore({ logger });
 
+  const deviceName = process.env.DEVICE_NAME || "PADMA";
+
   const sock = makeWASocket({
     version,
     logger,
     printQRInTerminal: false,
     auth: state,
-    browser: ['PADMA', '', ''],
+    browser: [deviceName, '', ''],
   });
 
   store.bind(sock.ev);
