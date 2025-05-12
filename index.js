@@ -87,6 +87,19 @@ function requireSession(req, res, next) {
 const app = express();
 app.use(express.json());
 
+/*  AUTHENTICATION
+ All requests should have x-api-key header with valid api key.
+  */
+const API_KEY = process.env.API_KEY || "your-secure-api-key";
+function apiKeyAuth(req, res, next) {
+  const key = req.headers['x-api-key'];
+  if (!key || key !== API_KEY) {
+    return res.status(401).json({ error: 'Api key not found or invalid' });
+  }
+  next();
+}
+app.use(apiKeyAuth);
+
 app.get("/", (req, res) => {
   res.json({ status: "SERVER RUNNING"})
 })
