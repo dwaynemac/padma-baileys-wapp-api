@@ -42,6 +42,7 @@ async function createSession(id) {
     logger,
     printQRInTerminal: false,
     auth: state,
+    browser: ['PADMA', '', ''],
   });
 
   store.bind(sock.ev);
@@ -268,4 +269,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.4 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.5 running on http://localhost:${PORT}`));
