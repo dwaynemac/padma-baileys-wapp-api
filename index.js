@@ -92,6 +92,25 @@ app.get("/", (req, res) => {
 })
 
 /**
+ * GET /sessions
+ * Lists all active sessions.
+ */
+app.get("/sessions", (req, res) => {
+  const activeSessions = Array.from(sessions.keys()).map(sessionId => {
+    const { sock } = sessions.get(sessionId);
+    return {
+      id: sessionId,
+      isLoggedIn: !!sock.user,
+      user: sock.user ? {
+        id: sock.user.id,
+        name: sock.user.name
+      } : null
+    };
+  });
+  res.json(activeSessions);
+});
+
+/**
  * POST /sessions/:sessionId
  * Starts a new session (or resumes) and returns a QR code (PNG‑base64) if not yet authenticated.
  */
@@ -164,4 +183,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.1 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.2 running on http://localhost:${PORT}`));
