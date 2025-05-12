@@ -6,6 +6,7 @@ import {
 } from "@whiskeysockets/baileys";
 import path from "path";
 import fs from "fs/promises";
+import logger from './logger.js'
 
 // Map to store active sessions
 const sessions = new Map(); // sessionId -> { socket, store }
@@ -18,6 +19,7 @@ const sessions = new Map(); // sessionId -> { socket, store }
  * @returns {Promise<object>} Session object with sock, store, and getNewQr
  */
 async function createSession(id, logger, dirName) {
+  logger.debug("createSession", id, dirName)
   if (sessions.has(id)) return sessions.get(id);
   const sessionDir = path.join(dirName, "sessionsData", id);
   // Ensure the directory exists
@@ -73,6 +75,7 @@ async function createSession(id, logger, dirName) {
  * @param {function} next - Express next function
  */
 function requireSession(req, res, next) {
+  logger.debug("requireSession", req.params)
   const { sessionId } = req.params;
   if (!sessions.has(sessionId)) return res.status(404).json({ error: "Session not found" });
   req.session = sessions.get(sessionId);

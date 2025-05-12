@@ -1,31 +1,23 @@
 // A minimal WhatsApp‐API‑like HTTP server using Baileys
-// ----------------------------------------------------------
-// Requirements (add in package.json):
-//   "@whiskeysockets/baileys": "^6.7.0",
-//   "express": "^4.19.0",
-//   "qrcode": "^1.5.3"
-// Run with Node 18 +   (package.json must include { "type": "module" })
-// DISCLAIMER: Demo‑only. Add persistence, auth, TLS & error‑handling for production.
 
 import express from "express";
 import qrcode from "qrcode";
 import { DisconnectReason } from "@whiskeysockets/baileys";
-import P from "pino";
 import path from "path";
 import { fileURLToPath } from "url";
-import { 
+import {
   createSession, 
   requireSession, 
   apiKeyAuth, 
   deleteSession,
   getActiveSessions,
-  sessions 
+  sessions
 } from "./helpers.js";
+import logger from './logger.js'
 
 // ---------- Globals ----------
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
-const logger = P({ level: "debug" });
 
 // ---------- Express API ----------
 const app = express();
@@ -65,6 +57,7 @@ app.get("/sessions", (req, res) => {
  * Starts a new session (or resumes) and returns a QR code (PNG‑base64) if not yet authenticated.
  */
 app.post("/sessions/:sessionId", async (req, res) => {
+  logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
   const { sessionId } = req.params;
   const { sock, getNewQr } = await createSession(sessionId, logger, __dirname);
   if (sock.user) {
@@ -80,6 +73,7 @@ app.post("/sessions/:sessionId", async (req, res) => {
  * Lists recent chats with basic metadata.
  */
 app.get("/sessions/:sessionId/chats", requireSession, (req, res) => {
+  logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId/chats')
   const { store } = req.session;
   const chats = store.chats
     .all()
@@ -205,4 +199,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.7 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.10 running on http://localhost:${PORT}`));
