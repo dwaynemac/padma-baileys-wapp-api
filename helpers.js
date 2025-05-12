@@ -77,7 +77,6 @@ async function createSession(id, logger, dirName) {
  * @param {function} next - Express next function
  */
 function requireSession(req, res, next) {
-  logger.debug("requireSession", req.params)
   const { sessionId } = req.params;
   if (!sessions.has(sessionId)) return res.status(404).json({ error: "Session not found" });
   req.session = sessions.get(sessionId);
