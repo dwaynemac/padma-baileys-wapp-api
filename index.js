@@ -162,13 +162,85 @@ app.get("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (re
 /**
  * GET /sessions/:sessionId/chats/:chatId/contact
  * Returns contact information for the chat ID (for individual or group participants).
+ * Includes profilePicThumbObj, name, pushname, verifiedName, and shortName.
+ * Uses Baileys methods to fetch additional contact details.
  */
-app.get("/sessions/:sessionId/chats/:chatId/contact", requireSession, (req, res) => {
-  const { store } = req.session;
+app.get("/sessions/:sessionId/chats/:chatId/contact", requireSession, async (req, res) => {
+  const { store, sock } = req.session;
   const { chatId } = req.params;
-  const contact = store.contacts[chatId];
-  if (!contact) return res.status(404).json({ error: "Contact not found" });
-  res.json(contact);
+
+  try {
+    // Get basic contact info from store
+    let contact = store.contacts[chatId];
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+    // Try to get chat info which might have more details
+    const chat = store.chats.get(chatId);
+
+    // Use Baileys to fetch additional contact information
+    let profilePic = null;
+    try {
+      // Try to fetch profile picture URL
+      profilePic = await sock.profilePictureUrl(chatId, 'image');
+    } catch (e) {
+      logger.info({ error: e.message }, 'Failed to fetch profile picture');
+    }
+
+    // Try to fetch contact status
+    let status = null;
+    try {
+      status = await sock.fetchStatus(chatId);
+    } catch (e) {
+      logger.info({ error: e.message }, 'Failed to fetch status');
+    }
+
+    // Try to fetch business profile for business accounts
+    let businessProfile = null;
+    try {
+      businessProfile = await sock.getBusinessProfile(chatId);
+    } catch (e) {
+      logger.info({ error: e.message }, 'Failed to fetch business profile');
+    }
+
+    // Check if the number is registered on WhatsApp
+    let isOnWhatsApp = false;
+    try {
+      const [result] = await sock.onWhatsApp(chatId.split('@')[0]);
+      isOnWhatsApp = result?.exists || false;
+    } catch (e) {
+      logger.info({ error: e.message }, 'Failed to check if number is on WhatsApp');
+    }
+
+    // Create enhanced contact with all required fields
+    const enhancedContact = {
+      ...contact,
+      // Use chat name if contact name is not available
+      name: contact.name || (chat ? chat.name : null),
+      // Use notify as pushname if not available
+      pushname: contact.pushname || contact.notify || null,
+      // Use name or notify for these fields if not available
+      verifiedName: contact.verifiedName || contact.name || contact.notify || null,
+      shortName: contact.shortName || contact.name || contact.notify || null,
+      // Ensure profilePicThumbObj is included with proper structure
+      profilePicThumbObj: contact.profilePicThumbObj || (profilePic ? {
+        eurl: profilePic,
+        url: profilePic,
+        tag: "0",
+        id: chatId
+      } : null),
+      // Add additional information from Baileys
+      status: status ? status.status : null,
+      lastSeen: status ? status.lastSeen : null,
+      // Add business profile information if available
+      businessProfile: businessProfile || null,
+      // Add WhatsApp registration status
+      isOnWhatsApp: isOnWhatsApp
+    };
+
+    res.json(enhancedContact);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
@@ -183,4 +255,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.2 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.4 running on http://localhost:${PORT}`));
