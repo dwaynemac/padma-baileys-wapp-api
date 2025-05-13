@@ -13,6 +13,7 @@ import {
   sessions
 } from "./helpers.js";
 import logger from './logger.js'
+import version from './version.js'
 
 // ---------- Globals ----------
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -199,4 +200,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.2.2 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server ${version} running on http://localhost:${PORT}`));

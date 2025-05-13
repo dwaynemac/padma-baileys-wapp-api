@@ -8,6 +8,7 @@ import {
 import path from "path";
 import fs from "fs/promises";
 import logger from './logger.js'
+import version from './version.js'
 
 // Map to store active sessions
 const sessions = new Map(); // sessionId -> { socket, store }
@@ -19,7 +20,7 @@ async function makeConfiggedWASocket(state){
     printQRInTerminal: false,
     auth: state,
     markOnlineOnConnect: false, // avoid blocking notifications on whatsapp app @see https://baileys.wiki/docs/socket/configuration#markonlineonconnect
-    browser: [deviceName, '', ''],
+    browser: [`${deviceName} ${version}`, 'Desktop', version],// pongo version en el name xq la otra no se dónde verla.
   });
 }
 
