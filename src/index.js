@@ -166,8 +166,8 @@ app.get("/sessions/:sessionId/chats/:chatId/contact", requireSession, async (req
       // Use notify as pushname if not available
       pushname: contact.pushname || contact.notify || null,
       // Use name or notify for these fields if not available
-      verifiedName: contact.verifiedName || contact.name || contact.notify || null,
-      shortName: contact.shortName || contact.name || contact.notify || null,
+      verifiedName: contact.verifiedName,
+      shortName: contact.shortName,
       // Ensure profilePicThumbObj is included with proper structure
       profilePicThumbObj: contact.profilePicThumbObj || (profilePic ? {
         eurl: profilePic,
