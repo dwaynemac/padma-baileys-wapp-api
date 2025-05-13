@@ -32,7 +32,11 @@ async function makeConfiggedWASocket(state){
  */
 async function createSession(id, logger, dirName) {
   logger.debug("called createSession", id, dirName)
-  if (sessions.has(id)) return sessions.get(id);
+  if (sessions.has(id)) {
+    logger.debug("session already exists, returning")
+    return sessions.get(id);
+  }
+
   const sessionDir = path.join(dirName, "sessionsData", id);
   // Ensure the directory exists
   await fs.mkdir(sessionDir, { recursive: true });
