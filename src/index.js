@@ -95,13 +95,16 @@ app.get("/sessions/:sessionId/chats", requireSession, (req, res) => {
  * Returns the most recent N messages from a chat.
  */
 app.get("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (req, res) => {
-  const { sock } = req.session;
+  logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId/chats/:chatId/messages')
+  const { sock, store } = req.session;
   const { chatId } = req.params;
   const limit = Number(req.query.limit) || 50;
   try {
-    const msgs = await sock.store.loadMessages(chatId, limit);
+    // Pass a cursor with 'before' property set to undefined to get the most recent messages
+    const msgs = await store.loadMessages(chatId, limit, { before: undefined });
     res.json(msgs);
   } catch (err) {
+    logger.error({err}, 'Failed to load messages')
     res.status(500).json({ error: err.message });
   }
 });
