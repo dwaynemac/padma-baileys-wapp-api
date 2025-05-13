@@ -1,7 +1,6 @@
 import {
   makeWASocket,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
   makeInMemoryStore,
   DisconnectReason
 } from "@whiskeysockets/baileys";
