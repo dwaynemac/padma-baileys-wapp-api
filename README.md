@@ -16,6 +16,9 @@ lists all active sessions
 ## POST /sessions/:id
 starts or resumes a session
 
+## GET /sessions/:id
+returns information about a specific session
+
 ## DELETE /sessions/:id
 logs out & removes session dir
 

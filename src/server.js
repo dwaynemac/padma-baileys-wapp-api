@@ -71,6 +71,44 @@ app.post("/sessions/:sessionId", async (req, res) => {
   res.json({ status: "qr", qr: qrPng });
 });
 
+
+/**
+ * GET /sessions/:sessionId
+ * Returns information about a specific session.
+ */
+app.get("/sessions/:sessionId", requireSession, (req, res) => {
+  logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId')
+  const { sessionId } = req.params;
+  const { sock } = req.session;
+
+  res.json({
+    id: sessionId,
+    isLoggedIn: !!sock.user,
+    user: sock.user ? {
+      id: sock.user.id,
+      name: sock.user.name
+    } : null
+  });
+});
+
+/**
+ * DELETE /sessions/:sessionId
+ * Logs out & removes the session dir.
+ */
+app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
+  logger.debug({sessionId: req.params.sessionId}, 'DELETE /sessions/:sessionId')
+  const { sessionId } = req.params;
+  const { sock } = req.session;
+  try {
+    await sock.logout();
+    await deleteSession(sessionId, __dirname);
+    res.json({ status: "logged_out" });
+  } catch (err) {
+    logger.error({err}, 'Failed to logout')
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * GET /sessions/:sessionId/chats
  * Lists recent chats with basic metadata.
@@ -193,16 +231,5 @@ app.get("/sessions/:sessionId/chats/:chatId/contact", requireSession, async (req
   }
 });
 
-/**
- * DELETE /sessions/:sessionId
- * Logs out & removes the session dir.
- */
-app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
-  const { sessionId } = req.params;
-  const { sock } = req.session;
-  await sock.logout();
-  deleteSession(sessionId);
-  res.json({ status: "logged_out" });
-});
 
 app.listen(PORT, () => logger.info(`PADMA Baileys API server ${version} running on http://localhost:${PORT}`));

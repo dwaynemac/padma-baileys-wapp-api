@@ -97,9 +97,22 @@ function getActiveSessions() {
 /**
  * Delete a session
  * @param {string} sessionId - Session identifier
+ * @param {string} dirName - Directory path (optional)
  */
-function deleteSession(sessionId) {
+async function deleteSession(sessionId, dirName) {
   sessions.delete(sessionId);
+
+  // If dirName is provided, also delete the session directory
+  if (dirName) {
+    try {
+      const sessionDir = path.join(dirName, "sessionsData", sessionId);
+      await fs.rm(sessionDir, { recursive: true, force: true });
+      logger.debug({ sessionId }, "Session directory deleted");
+    } catch (err) {
+      logger.error({ err, sessionId }, "Failed to delete session directory");
+      // We still consider the session deleted even if directory deletion fails
+    }
+  }
 }
 
 export {
