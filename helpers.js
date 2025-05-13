@@ -24,7 +24,7 @@ async function createSession(id, logger, dirName) {
   const sessionDir = path.join(dirName, "sessionsData", id);
   // Ensure the directory exists
   await fs.mkdir(sessionDir, { recursive: true });
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir); // DO NOT USE IN PROD!!!! This function consumes a lot of IO. Only use its implementation as a guide. As I said earlier here
   const { version } = await fetchLatestBaileysVersion();
   const store = makeInMemoryStore({ logger });
 
