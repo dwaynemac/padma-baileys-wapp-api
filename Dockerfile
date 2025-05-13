@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8300
 
 # 5. Run the server
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]

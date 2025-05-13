@@ -2,7 +2,6 @@
 
 import express from "express";
 import qrcode from "qrcode";
-import { DisconnectReason } from "@whiskeysockets/baileys";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -55,6 +54,7 @@ app.get("/sessions", (req, res) => {
 /**
  * POST /sessions/:sessionId
  * Starts a new session (or resumes) and returns a QR code (PNG‑base64) if not yet authenticated.
+ * --
  */
 app.post("/sessions/:sessionId", async (req, res) => {
   logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
@@ -199,4 +199,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.1.10 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.2.1 running on http://localhost:${PORT}`));
