@@ -199,4 +199,4 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   res.json({ status: "logged_out" });
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.2.1 running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server 0.2.2 running on http://localhost:${PORT}`));

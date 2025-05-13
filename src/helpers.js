@@ -13,10 +13,8 @@ import logger from './logger.js'
 const sessions = new Map(); // sessionId -> { socket, store }
 
 async function makeConfiggedWASocket(state){
-  const { version } = await fetchLatestBaileysVersion();
   const deviceName = process.env.DEVICE_NAME || "PADMA";
   return makeWASocket({
-    version,
     logger,
     printQRInTerminal: false,
     auth: state,
