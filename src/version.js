@@ -1,4 +1,4 @@
 // Es la version de nuestro servidor, ir cambiándola con cada release
 // mayor.minor.patch
-const version = '0.0.2'
+const version = '0.0.3'
 export default version

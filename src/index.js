@@ -6,12 +6,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   createSession, 
-  requireSession, 
-  apiKeyAuth, 
   deleteSession,
   getActiveSessions,
   sessions
 } from "./helpers.js";
+import {
+  requireSession,
+  apiKeyAuth
+} from './middlewares.js'
 import logger from './logger.js'
 import version from './version.js'
 
