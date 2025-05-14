@@ -8,7 +8,8 @@ import {
   createSession, 
   deleteSession,
   getActiveSessions,
-  sessions
+  sessions,
+  normalizeJid
 } from "./helpers.js";
 import {
   requireSession,
@@ -127,6 +128,43 @@ app.get("/sessions/:sessionId/chats", requireSession, (req, res) => {
     .sort((a, b) => b.conversationTimestamp - a.conversationTimestamp);
   res.json(chats);
 });
+
+/**
+ * GET /sessions/:sessionId/chats/:chatId
+ * Returns details of a single chat (not including messages).
+ */
+app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
+  logger.debug({sessionId: req.params.sessionId, chatId: req.params.chatId}, 'GET /sessions/:sessionId/chats/:chatId')
+  const { store, sock } = req.session;
+  const { chatId } = req.params;
+
+  // Get the chat from the store
+  const chat = store.chats.get(chatId);
+
+  if (!chat) {
+    return res.status(404).json({ error: "Chat not found" });
+  }
+
+  // Check if this is a self-chat (chat with myself)
+  const isMe = sock.user && normalizeJid(chatId) === normalizeJid(sock.user.id);
+
+  // Return chat details (excluding messages)
+  res.json({
+    id: chat.id,
+    name: chat.name,
+    unreadCount: chat.unreadCount,
+    conversationTimestamp: chat.conversationTimestamp,
+    isGroup: chat.isGroup,
+    participant: chat.participant,
+    ephemeralExpiration: chat.ephemeralExpiration,
+    ephemeralSettingTimestamp: chat.ephemeralSettingTimestamp,
+    mute: chat.mute,
+    pin: chat.pin,
+    isMe: isMe
+  });
+});
+
+
 
 /**
  * GET /sessions/:sessionId/chats/:chatId/messages?limit=50

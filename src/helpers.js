@@ -115,9 +115,17 @@ async function deleteSession(sessionId, dirName) {
   }
 }
 
+/**
+ * Normaliza un JID de WhatsApp eliminando la parte “:device” si existe.
+ * Ej.: "12345:2@s.whatsapp.net" => "12345@s.whatsapp.net"
+ */
+const normalizeJid = (jid) => typeof jid === 'string' ? jid.replace(/:[^@]+@/, '@') : jid;
+
+
 export {
   createSession,
   getActiveSessions,
   deleteSession,
-  sessions
+  sessions,
+  normalizeJid
 };

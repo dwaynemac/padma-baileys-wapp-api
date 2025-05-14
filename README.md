@@ -26,6 +26,9 @@ logs out & removes session dir
 ## GET /sessions/:session_id/chats
 list all chats
 
+## GET /sessions/:session_id/chats/:chat_id
+details of given chat
+
 ## GET /sessions/:session_id/chats/:chat_id/messages
 messages in chat
 
