@@ -1,6 +1,7 @@
 # Configuration
 
 ## ENVIRONMENT VARIABLES
+- **API_KEY:** api key para acceder
 - **PORT:** el puerto en que corre el server
 - **LOG_LEVEL:** 'debug', 'info', 'warn'
 - **DEVICE_NAME:** nombre del device en whatsapp al vincularlo
