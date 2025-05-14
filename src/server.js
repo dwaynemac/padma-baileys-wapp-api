@@ -72,6 +72,126 @@ app.post("/sessions/:sessionId", async (req, res) => {
   res.json({ status: "qr", qr: qrPng });
 });
 
+app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) => {
+  logger.debug({sessionId: req.params.sessionId}, 'PUT /sessions/:sessionId/chats/refresh')
+  const { store, sock } = req.session;
+  try {
+    // Get all chats
+    const chats = store.chats.all();
+
+    if (chats.length === 0) {
+      logger.info('No chats found in store, attempting to fetch chats from WhatsApp');
+
+      // If we have no chats, we need to trigger a sync with WhatsApp
+      // One way to do this is to listen for the 'messaging-history.set' event
+      // which is emitted when WhatsApp sends chat history
+
+      // We'll create a promise that resolves when we receive chats
+      const waitForChats = new Promise((resolve, reject) => {
+        // Set a timeout to avoid hanging indefinitely
+        const timeout = setTimeout(() => {
+          // Remove the listener before rejecting to avoid memory leaks
+          sock.ev.off('messaging-history.set', listener);
+          reject(new Error('Timed out waiting for chats'));
+        }, 15000); // 15 seconds timeout
+
+        // Listen for the messaging-history.set event
+        const listener = (data) => {
+          if (data && data.chats && data.chats.length > 0) {
+            clearTimeout(timeout);
+            sock.ev.off('messaging-history.set', listener);
+            resolve(data.chats);
+          }
+        };
+
+        // Listen for the chats.upsert event as an alternative
+        const upsertListener = (chats) => {
+          if (chats && chats.length > 0) {
+            clearTimeout(timeout);
+            sock.ev.off('messaging-history.set', listener);
+            sock.ev.off('chats.upsert', upsertListener);
+            resolve(chats);
+          }
+        };
+
+        sock.ev.on('messaging-history.set', listener);
+        sock.ev.on('chats.upsert', upsertListener);
+
+        // Trigger a refresh by requesting the chat list
+        // This should trigger WhatsApp to send us the chat history
+        logger.info('Triggering chat sync...');
+
+        // There's no direct method to fetch all chats, but we can try to trigger
+        // the sync by using some of the available methods
+
+        // We'll try multiple methods to increase our chances of success
+        (async () => {
+          try {
+            // Method 1: Try to fetch status which might trigger chat sync
+            await sock.fetchStatus('status@broadcast');
+            logger.info('Fetched status');
+          } catch (e) {
+            logger.warn({err: e}, 'Failed to fetch status');
+          }
+
+          try {
+            // Method 2: Try to check if a number is on WhatsApp
+            // This might trigger a sync
+            const [result] = await sock.onWhatsApp('1234567890');
+            logger.info('Checked if number is on WhatsApp');
+          } catch (e) {
+            logger.warn({err: e}, 'Failed to check if number is on WhatsApp');
+          }
+
+          // If we have a user, try to fetch their status
+          if (sock.user && sock.user.id) {
+            try {
+              await sock.fetchStatus(sock.user.id);
+              logger.info('Fetched user status');
+            } catch (e) {
+              logger.warn({err: e}, 'Failed to fetch user status');
+            }
+          }
+        })();
+      });
+
+      try {
+        await waitForChats;
+        logger.info('Successfully fetched chats from WhatsApp');
+      } catch (syncErr) {
+        logger.warn({err: syncErr}, 'Failed to sync chats from WhatsApp');
+        // Even if we fail to sync, we'll continue with any chats we might have now
+      }
+    }
+
+    // Get chats again (they might have been updated)
+    const updatedChats = store.chats.all();
+
+    // For each chat, load the most recent messages
+    const limit = 50; // Adjust this value as needed
+    let loadedChatsCount = 0;
+
+    for (const chat of updatedChats) {
+      try {
+        await store.loadMessages(chat.id, limit, { before: undefined });
+        loadedChatsCount++;
+      } catch (chatErr) {
+        logger.warn({chatId: chat.id, err: chatErr}, 'Failed to fetch history for chat');
+        // Continue with other chats even if one fails
+      }
+    }
+
+    res.json({ 
+      status: "ok",
+      chatsCount: updatedChats.length,
+      loadedChatsCount: loadedChatsCount
+    });
+  } catch (err) {
+    logger.error({err}, 'Failed to fetch history')
+    res.status(500).json({ error: err.message });
+  }
+})
+
 
 /**
  * GET /sessions/:sessionId

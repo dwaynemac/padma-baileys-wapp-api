@@ -29,6 +29,9 @@ list all chats
 ## GET /sessions/:session_id/chats/:chat_id
 details of given chat
 
+## PUT /sessions/:session_id/chats/refresh
+refreshes chat history
+
 ## GET /sessions/:session_id/chats/:chat_id/messages
 messages in chat
 
