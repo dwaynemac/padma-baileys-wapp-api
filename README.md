@@ -30,3 +30,15 @@ messages in chat
 
 ## GET /sessions/:session_id/chats/:chat_id/contact
 Contact's details
+
+## POST /sessions/:session_id/chats/:chat_id/messages
+Sends a new message to a chat. Requires a JSON body with a `text` field containing the message to send.
+
+Example request body:
+```json
+{
+  "text": "Hello, this is a test message"
+}
+```
+
+Returns the message ID, timestamp, and the message text.

@@ -231,5 +231,35 @@ app.get("/sessions/:sessionId/chats/:chatId/contact", requireSession, async (req
   }
 });
 
+/**
+ * POST /sessions/:sessionId/chats/:chatId/messages
+ * Sends a new message to a chat.
+ */
+app.post("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (req, res) => {
+  logger.debug({sessionId: req.params.sessionId, chatId: req.params.chatId}, 'POST /sessions/:sessionId/chats/:chatId/messages')
+  const { sock } = req.session;
+  const { chatId } = req.params;
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: "Message text is required" });
+  }
+
+  try {
+    // Send the message
+    const result = await sock.sendMessage(chatId, { text });
+
+    // Return the message ID and other relevant information
+    res.status(201).json({
+      status: "sent",
+      messageId: result.key.id,
+      timestamp: result.messageTimestamp,
+      message: text
+    });
+  } catch (err) {
+    logger.error({err}, 'Failed to send message')
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.listen(PORT, () => logger.info(`PADMA Baileys API server ${version} running on http://localhost:${PORT}`));
