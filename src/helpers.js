@@ -18,6 +18,12 @@ async function makeConfiggedWASocket(state){
     auth: state,
     markOnlineOnConnect: false, // avoid blocking notifications on whatsapp app @see https://baileys.wiki/docs/socket/configuration#markonlineonconnect
     browser: [deviceName, 'Desktop', version],
+    // Add timeout configurations to prevent "Timed Out" errors
+    defaultQueryTimeoutMs: 60000, // 1 minute timeout for queries
+    connectTimeoutMs: 60000, // 1 minute timeout for connection
+    keepAliveIntervalMs: 25000, // 25 seconds ping-pong interval
+    retryRequestDelayMs: 500, // 500ms delay between retries
+    maxMsgRetryCount: 5, // Maximum retry count for messages
   });
 }
 
@@ -41,6 +47,12 @@ async function createSession(id, logger) {
 
   store.bind(sock.ev);
 
+  // Add global error handler to prevent unhandled promise rejections from crashing the server
+  sock.ev.on("error", (err) => {
+    logger.error({ id, error: err }, "Socket encountered an error");
+    // Don't delete the session, just log the error
+  });
+
   // Persist credentials on update
   sock.ev.on("creds.update", saveCreds);
 
@@ -60,10 +72,31 @@ async function createSession(id, logger) {
         // We must handle this creating a new socket, existing socket has been closed.
         const newSock = await makeConfiggedWASocket(state);
         store.bind(newSock.ev);
+
+        // Add global error handler to the new socket as well
+        newSock.ev.on("error", (err) => {
+          logger.error({ id, error: err }, "New socket (restart) encountered an error");
+          // Don't delete the session, just log the error
+        });
+
         newSock.ev.on("creds.update", saveCreds);
         sessions.set(id, {sock: newSock, store, getNewQr});
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
+      } else if (reason === DisconnectReason.timedOut) {
+        // Handle timeout errors by reconnecting instead of deleting the session
+        logger.warn({ id }, "Connection timed out, attempting to reconnect");
+        const newSock = await makeConfiggedWASocket(state);
+        store.bind(newSock.ev);
+
+        // Add global error handler to the new socket as well
+        newSock.ev.on("error", (err) => {
+          logger.error({ id, error: err }, "New socket (timeout recovery) encountered an error");
+          // Don't delete the session, just log the error
+        });
+
+        newSock.ev.on("creds.update", saveCreds);
+        sessions.set(id, {sock: newSock, store, getNewQr});
       } else {
         await deleteSession(id);
       }
