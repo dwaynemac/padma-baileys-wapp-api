@@ -11,6 +11,7 @@ services:
     build: ./ # this will rebuild from Dockerfile in ./
     # image: padma-wa:latest # this will pull the existing image
     environment:
+      - API_KEY=${apikey} # loads from .env
       - PORT=8300
       - REDIS_URL=redis://redis:6379
     ports:
