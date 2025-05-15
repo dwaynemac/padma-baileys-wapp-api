@@ -2,8 +2,6 @@
 
 import express from "express";
 import qrcode from "qrcode";
-import path from "path";
-import { fileURLToPath } from "url";
 import {
   createSession, 
   deleteSession,
@@ -19,7 +17,6 @@ import logger from './logger.js'
 import version from './version.js'
 
 // ---------- Globals ----------
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
 // ---------- Express API ----------
@@ -63,7 +60,7 @@ app.get("/sessions", (req, res) => {
 app.post("/sessions/:sessionId", async (req, res) => {
   logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
   const { sessionId } = req.params;
-  const { sock, getNewQr } = await createSession(sessionId, logger, __dirname);
+  const { sock, getNewQr } = await createSession(sessionId, logger);
   if (sock.user) {
     return res.json({ status: "already_logged_in" });
   }
@@ -222,7 +219,7 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   const { sock } = req.session;
   try {
     await sock.logout();
-    await deleteSession(sessionId, __dirname);
+    await deleteSession(sessionId, redisClient);
     res.json({ status: "logged_out" });
   } catch (err) {
     logger.error({err}, 'Failed to logout')

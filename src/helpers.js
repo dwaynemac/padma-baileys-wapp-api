@@ -1,11 +1,9 @@
 import {
   makeWASocket,
-  useMultiFileAuthState,
   makeInMemoryStore,
   DisconnectReason
 } from "@whiskeysockets/baileys";
-import path from "path";
-import fs from "fs/promises";
+import { useRedisAuthState, redisClient } from "./use_redis_auth_state.js"
 import logger from './logger.js'
 import version from './version.js'
 
@@ -27,20 +25,16 @@ async function makeConfiggedWASocket(state){
  * Creates a new WhatsApp session or returns an existing one
  * @param {string} id - Session identifier
  * @param {object} logger - Pino logger instance
- * @param {string} dirName - Directory path
  * @returns {Promise<object>} Session object with sock, store, and getNewQr
  */
-async function createSession(id, logger, dirName) {
-  logger.debug("called createSession", id, dirName)
+async function createSession(id, logger) {
+  logger.debug("called createSession", id)
   if (sessions.has(id)) {
     logger.debug("session already exists, returning")
     return sessions.get(id);
   }
 
-  const sessionDir = path.join(dirName, "sessionsData", id);
-  // Ensure the directory exists
-  await fs.mkdir(sessionDir, { recursive: true });
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir); // DO NOT USE IN PROD!!!! This function consumes a lot of IO. Only use its implementation as a guide. As I said earlier here
+  const { state, saveCreds } = await useRedisAuthState(id);
   const store = makeInMemoryStore({ logger });
 
   const sock = await makeConfiggedWASocket(state)
@@ -99,20 +93,9 @@ function getActiveSessions() {
  * @param {string} sessionId - Session identifier
  * @param {string} dirName - Directory path (optional)
  */
-async function deleteSession(sessionId, dirName) {
+async function deleteSession(sessionId) {
   sessions.delete(sessionId);
-
-  // If dirName is provided, also delete the session directory
-  if (dirName) {
-    try {
-      const sessionDir = path.join(dirName, "sessionsData", sessionId);
-      await fs.rm(sessionDir, { recursive: true, force: true });
-      logger.debug({ sessionId }, "Session directory deleted");
-    } catch (err) {
-      logger.error({ err, sessionId }, "Failed to delete session directory");
-      // We still consider the session deleted even if directory deletion fails
-    }
-  }
+  redisClient.del(sessionId)
 }
 
 /**
