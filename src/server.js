@@ -60,13 +60,26 @@ app.get("/sessions", (req, res) => {
 app.post("/sessions/:sessionId", async (req, res) => {
   logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
   const { sessionId } = req.params;
-  const { sock, getNewQr } = await createSession(sessionId, logger);
+  const { sock, getNewQr, store } = await createSession(sessionId, logger);
+
+  let isHealthy = false;
   if (sock.user) {
-    return res.json({ status: "already_logged_in" });
+    try {
+      await store.chats.all(); // check if we can load chats
+      isHealthy = true;
+    } catch {}
   }
-  const qrString = await getNewQr();
-  const qrPng = await qrcode.toDataURL(qrString);
-  res.json({ status: "qr", qr: qrPng });
+
+  if (isHealthy) {
+    return res.json({ status: "already_logged_in" });
+  } else {
+    // Session is broken—delete and restart session for clean auth flow
+    await deleteSession(sessionId);
+    const { sock: newSock, getNewQr: newGetNewQr } = await createSession(sessionId, logger);
+    const qrString = await newGetNewQr();
+    const qrPng = await qrcode.toDataURL(qrString);
+    return res.json({ status: "qr", qr: qrPng });
+  }
 });
 
 app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) => {
