@@ -1,13 +1,21 @@
+A minimal WhatsApp‐API‑like HTTP server using Baileys
+
+# RUN
+Run ```docker-compose up```
+
 # Configuration
 
-## ENVIRONMENT VARIABLES
+## Server ENVironment variables
 - **API_KEY:** api key para acceder
 - **PORT:** el puerto en que corre el server
 - **LOG_LEVEL:** 'debug', 'info', 'warn'
 - **DEVICE_NAME:** nombre del device en whatsapp al vincularlo
 - **REDIS_URL:** url de redis
 
-# Routes
+## REDIS
+Redis should be available at **REDIS_URL**.
+
+# == Server endpoints ==
 
 ## GET /
 server check
