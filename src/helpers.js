@@ -62,8 +62,10 @@ async function createSession(id, logger) {
         store.bind(newSock.ev);
         newSock.ev.on("creds.update", saveCreds);
         sessions.set(id, {sock: newSock, store, getNewQr});
+      } else if (reason === DisconnectReason.loggedOut) {
+        await deleteSession(id);
       } else {
-        sessions.delete(id);
+        await deleteSession(id);
       }
     }
   });
