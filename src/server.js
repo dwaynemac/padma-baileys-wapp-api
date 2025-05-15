@@ -417,4 +417,4 @@ app.post("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (r
   }
 });
 
-app.listen(PORT, () => logger.info(`PADMA Baileys API server ${version} running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`PADMA Baileys API server ${version} running`));

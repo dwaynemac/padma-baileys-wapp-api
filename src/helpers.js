@@ -17,7 +17,7 @@ async function makeConfiggedWASocket(state){
     printQRInTerminal: false,
     auth: state,
     markOnlineOnConnect: false, // avoid blocking notifications on whatsapp app @see https://baileys.wiki/docs/socket/configuration#markonlineonconnect
-    browser: [`${deviceName} ${version}`, 'Desktop', version],// pongo version en el name xq la otra no se dónde verla.
+    browser: [deviceName, 'Desktop', version],
   });
 }
 
