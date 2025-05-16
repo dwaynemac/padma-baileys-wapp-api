@@ -10,6 +10,45 @@ import version from './version.js'
 // Map to store active sessions
 const sessions = new Map(); // sessionId -> { socket, store }
 
+/**
+ * Restores all sessions from Redis when the server starts
+ * @returns {Promise<void>}
+ */
+async function restoreSessionsFromRedis() {
+  try {
+    logger.info("Restoring sessions from Redis...");
+
+    // Get all keys in Redis
+    const keys = await redisClient.keys("*");
+
+    // Filter keys that have 'creds' field (these are session IDs)
+    const sessionIds = [];
+    for (const key of keys) {
+      const hasCreds = await redisClient.hExists(key, 'creds');
+      if (hasCreds) {
+        sessionIds.push(key);
+      }
+    }
+
+    logger.info(`Found ${sessionIds.length} sessions in Redis`);
+
+    // Restore each session
+    for (const sessionId of sessionIds) {
+      try {
+        logger.info(`Restoring session: ${sessionId}`);
+        await createSession(sessionId, logger);
+        logger.info(`Session restored: ${sessionId}`);
+      } catch (err) {
+        logger.error({ sessionId, error: err }, "Failed to restore session");
+      }
+    }
+
+    logger.info("Session restoration complete");
+  } catch (err) {
+    logger.error({ error: err }, "Failed to restore sessions from Redis");
+  }
+}
+
 async function makeConfiggedWASocket(state){
   const deviceName = process.env.DEVICE_NAME || "PADMA";
   return makeWASocket({
@@ -126,7 +165,6 @@ function getActiveSessions() {
 /**
  * Delete a session
  * @param {string} sessionId - Session identifier
- * @param {string} dirName - Directory path (optional)
  */
 async function deleteSession(sessionId) {
   sessions.delete(sessionId);
@@ -145,5 +183,6 @@ export {
   getActiveSessions,
   deleteSession,
   sessions,
-  normalizeJid
+  normalizeJid,
+  restoreSessionsFromRedis
 };
