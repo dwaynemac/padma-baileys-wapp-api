@@ -94,15 +94,13 @@ app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) =
       logger.info('No chats found in store, attempting to fetch chats from WhatsApp');
 
       // If we have no chats, we need to trigger a sync with WhatsApp
-      // One way to do this is to listen for the 'messaging-history.set' event
-      // which is emitted when WhatsApp sends chat history
-
       // We'll create a promise that resolves when we receive chats
       const waitForChats = new Promise((resolve, reject) => {
         // Set a timeout to avoid hanging indefinitely
         const timeout = setTimeout(() => {
-          // Remove the listener before rejecting to avoid memory leaks
+          // Remove the listeners before rejecting to avoid memory leaks
           sock.ev.off('messaging-history.set', listener);
+          sock.ev.off('chats.upsert', upsertListener);
           reject(new Error('Timed out waiting for chats'));
         }, 15000); // 15 seconds timeout
 
@@ -111,6 +109,7 @@ app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) =
           if (data && data.chats && data.chats.length > 0) {
             clearTimeout(timeout);
             sock.ev.off('messaging-history.set', listener);
+            sock.ev.off('chats.upsert', upsertListener);
             resolve(data.chats);
           }
         };
@@ -128,42 +127,31 @@ app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) =
         sock.ev.on('messaging-history.set', listener);
         sock.ev.on('chats.upsert', upsertListener);
 
-        // Trigger a refresh by requesting the chat list
-        // This should trigger WhatsApp to send us the chat history
-        logger.info('Triggering chat sync...');
+        // Use fetchMessagesFromWA to trigger a sync and fetch message history
+        logger.info('Using fetchMessagesFromWA to fetch message history...');
 
-        // There's no direct method to fetch all chats, but we can try to trigger
-        // the sync by using some of the available methods
-
-        // We'll try multiple methods to increase our chances of success
-        (async () => {
+        // If we have a user, use their ID to fetch messages
+        if (sock.user && sock.user.id) {
           try {
-            // Method 1: Try to fetch status which might trigger chat sync
-            await sock.fetchStatus('status@broadcast');
-            logger.info('Fetched status');
+            // Fetch messages from the user's chat
+            // This should trigger a sync of the chat history
+            sock.fetchMessagesFromWA(sock.user.id, 50);
+            logger.info('Successfully called fetchMessagesFromWA');
           } catch (e) {
-            logger.warn({err: e}, 'Failed to fetch status');
-          }
+            logger.warn({err: e}, 'Failed to fetch messages from WA');
 
-          try {
-            // Method 2: Try to check if a number is on WhatsApp
-            // This might trigger a sync
-            await sock.onWhatsApp('1234567890');
-            logger.info('Checked if number is on WhatsApp');
-          } catch (e) {
-            logger.warn({err: e}, 'Failed to check if number is on WhatsApp');
-          }
-
-          // If we have a user, try to fetch their status
-          if (sock.user && sock.user.id) {
+            // If fetchMessagesFromWA fails, try alternative methods
             try {
-              await sock.fetchStatus(sock.user.id);
-              logger.info('Fetched user status');
+              // Try to fetch status which might trigger chat sync
+              sock.fetchStatus('status@broadcast');
+              logger.info('Fetched status as fallback');
             } catch (e) {
-              logger.warn({err: e}, 'Failed to fetch user status');
+              logger.warn({err: e}, 'Failed to fetch status');
             }
           }
-        })();
+        } else {
+          logger.warn('No user ID available, cannot fetch messages');
+        }
       });
 
       try {
@@ -178,13 +166,18 @@ app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) =
     // Get chats again (they might have been updated)
     const updatedChats = store.chats.all();
 
-    // For each chat, load the most recent messages
+    // For each chat, use fetchMessagesFromWA to load the most recent messages
     const limit = 50; // Adjust this value as needed
     let loadedChatsCount = 0;
 
     for (const chat of updatedChats) {
       try {
+        // Use fetchMessagesFromWA to get messages directly from WhatsApp
+        await sock.fetchMessagesFromWA(chat.id, limit);
+
+        // Also load messages into the store for consistency with the rest of the app
         await store.loadMessages(chat.id, limit, { before: undefined });
+
         loadedChatsCount++;
       } catch (chatErr) {
         logger.warn({chatId: chat.id, err: chatErr}, 'Failed to fetch history for chat');

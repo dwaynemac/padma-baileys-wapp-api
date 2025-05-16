@@ -94,6 +94,19 @@ async function createSession(id) {
   // Persist credentials on update
   sock.ev.on("creds.update", saveCreds);
 
+  sock.ev.on('messaging-history.set', ({
+                                         chats: newChats,
+                                         contacts: newContacts,
+                                         messages: newMessages,
+                                         syncType
+                                       }) => {
+    logger.debug({ id, chats: newChats, contacts: newContacts, messages: newMessages, syncType }, "Received 'messaging-history.set'")
+    // handle the chats, contacts and messages
+    newChats.forEach(chat => { store.chats.upsert(chat, 'append')})
+    newContacts.forEach(contact => { store.contacts.upsert(contact, 'append')})
+    newMessages.forEach(message => { store.messages.upsert(message, 'append')})
+  })
+
   // Bubble QR to waiting HTTP call
   let qrResolver;
   sock.ev.on("connection.update", async (update) => {
