@@ -69,10 +69,9 @@ async function makeConfiggedWASocket(state){
 /**
  * Creates a new WhatsApp session or returns an existing one
  * @param {string} id - Session identifier
- * @param {object} logger - Pino logger instance
  * @returns {Promise<object>} Session object with sock, store, and getNewQr
  */
-async function createSession(id, logger) {
+async function createSession(id) {
   logger.debug("called createSession", id)
   if (sessions.has(id)) {
     logger.debug("session already exists, returning")

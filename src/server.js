@@ -1,5 +1,7 @@
 // A minimal WhatsApp‐API‑like HTTP server using Baileys
 
+import logger from './logger.js'
+import version from './version.js'
 import express from "express";
 import qrcode from "qrcode";
 import {
@@ -14,8 +16,6 @@ import {
   requireSession,
   apiKeyAuth
 } from './middlewares.js'
-import logger from './logger.js'
-import version from './version.js'
 
 // ---------- Globals ----------
 const PORT = process.env.PORT || 3000;
@@ -61,7 +61,7 @@ app.get("/sessions", (req, res) => {
 app.post("/sessions/:sessionId", async (req, res) => {
   logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
   const { sessionId } = req.params;
-  const { sock, store } = await createSession(sessionId, logger);
+  const { sock, store } = await createSession(sessionId);
 
   let isHealthy = false;
   if (sock.user) {
@@ -76,7 +76,7 @@ app.post("/sessions/:sessionId", async (req, res) => {
   } else {
     // Session is brand-new or broken—delete and restart session for clean auth flow
     await deleteSession(sessionId);
-    const { getNewQr } = await createSession(sessionId, logger);
+    const { getNewQr } = await createSession(sessionId);
     const qrString = await getNewQr();
     const qrPng = await qrcode.toDataURL(qrString);
     return res.json({ status: "qr", qr: qrPng });
