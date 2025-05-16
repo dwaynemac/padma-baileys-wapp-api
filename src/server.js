@@ -60,7 +60,7 @@ app.get("/sessions", (req, res) => {
 app.post("/sessions/:sessionId", async (req, res) => {
   logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
   const { sessionId } = req.params;
-  const { sock, getNewQr, store } = await createSession(sessionId, logger);
+  const { sock, store } = await createSession(sessionId, logger);
 
   let isHealthy = false;
   if (sock.user) {
@@ -73,10 +73,10 @@ app.post("/sessions/:sessionId", async (req, res) => {
   if (isHealthy) {
     return res.json({ status: "already_logged_in" });
   } else {
-    // Session is broken—delete and restart session for clean auth flow
+    // Session is brand-new or broken—delete and restart session for clean auth flow
     await deleteSession(sessionId);
-    const { sock: newSock, getNewQr: newGetNewQr } = await createSession(sessionId, logger);
-    const qrString = await newGetNewQr();
+    const { getNewQr } = await createSession(sessionId, logger);
+    const qrString = await getNewQr();
     const qrPng = await qrcode.toDataURL(qrString);
     return res.json({ status: "qr", qr: qrPng });
   }
@@ -147,7 +147,7 @@ app.put("/sessions/:sessionId/chats/refresh", requireSession, async (req, res) =
           try {
             // Method 2: Try to check if a number is on WhatsApp
             // This might trigger a sync
-            const [result] = await sock.onWhatsApp('1234567890');
+            await sock.onWhatsApp('1234567890');
             logger.info('Checked if number is on WhatsApp');
           } catch (e) {
             logger.warn({err: e}, 'Failed to check if number is on WhatsApp');
@@ -275,6 +275,14 @@ app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
     return res.status(404).json({ error: "Chat not found" });
   }
 
+  const labelAssociations = req.session.store.getChatLabels(chatId) || [];
+  const labels = labelAssociations.map((assoc) => {
+    const label = req.session.store.labels.get(assoc.labelId);
+    if (label) {
+      return {name: label.name, color: label.color ?? null};
+    }
+  });
+
   // Check if this is a self-chat (chat with myself)
   const isMe = sock.user && normalizeJid(chatId) === normalizeJid(sock.user.id);
 
@@ -290,7 +298,8 @@ app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
     ephemeralSettingTimestamp: chat.ephemeralSettingTimestamp,
     mute: chat.mute,
     pin: chat.pin,
-    isMe: isMe
+    isMe: isMe,
+    labels: labels
   });
 });
 
@@ -302,7 +311,7 @@ app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
  */
 app.get("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (req, res) => {
   logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId/chats/:chatId/messages')
-  const { sock, store } = req.session;
+  const { store } = req.session;
   const { chatId } = req.params;
   const limit = Number(req.query.limit) || 50;
   try {

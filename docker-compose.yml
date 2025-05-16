@@ -13,6 +13,7 @@ services:
     environment:
       - API_KEY=${apikey} # loads from .env
       - PORT=8300
+      - DEVICE_NAME=PADMA LOCAL
       - REDIS_URL=redis://redis:6379
     ports:
       - "8300:8300"

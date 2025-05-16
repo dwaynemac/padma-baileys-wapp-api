@@ -1,5 +1,7 @@
 A minimal WhatsApp‐API‑like HTTP server using Baileys
 
+En la implementación actual, la API utiliza la librería Baileys para conectarse a WhatsApp y manejar sesiones. Esto se observa en el archivo helpers.js, donde se crea un socket de Baileys y un store en memoria para cada sesión iniciada ￼. El store de Baileys mantiene en caché los datos de WhatsApp (chats, mensajes, contactos, etc.) y se vincula al socket mediante store.bind(sock.ev), de forma que todos los eventos y datos (p. ej. lista de chats) queden almacenados automáticamente. Además, las sesiones activas se administran en un mapa (sessions) que asocia un sessionId con su correspondiente sock (conexión Baileys) y store. Cada endpoint REST accede a la sesión correspondiente mediante el middleware requireSession, obteniendo así req.session.sock y req.session.store para interactuar con WhatsApp.
+
 # RUN
 Run ```docker-compose up```
 
