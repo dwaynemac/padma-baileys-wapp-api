@@ -49,9 +49,9 @@ async function restoreSessionsFromRedis() {
   }
 }
 
-async function makeConfiggedWASocket(state){
+async function makeConfiggedWASocket(state, store, saveCreds){
   const deviceName = process.env.DEVICE_NAME || "PADMA";
-  return makeWASocket({
+  const sock = makeWASocket({
     logger,
     printQRInTerminal: false,
     auth: state,
@@ -64,6 +64,18 @@ async function makeConfiggedWASocket(state){
     retryRequestDelayMs: 500, // 500ms delay between retries
     maxMsgRetryCount: 5, // Maximum retry count for messages
   });
+
+  store.bind(sock.ev);
+
+  // Add global error handler to the new socket as well
+  sock.ev.on("error", (err) => {
+    logger.error({ id, error: err }, "New socket (timeout recovery) encountered an error");
+    // Don't delete the session, just log the error
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  return sock
 }
 
 /**
@@ -81,31 +93,7 @@ async function createSession(id) {
   const { state, saveCreds } = await useRedisAuthState(id);
   const store = makeInMemoryStore({ logger });
 
-  const sock = await makeConfiggedWASocket(state)
-
-  store.bind(sock.ev);
-
-  // Add global error handler to prevent unhandled promise rejections from crashing the server
-  sock.ev.on("error", (err) => {
-    logger.error({ id, error: err }, "Socket encountered an error");
-    // Don't delete the session, just log the error
-  });
-
-  // Persist credentials on update
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on('messaging-history.set', ({
-                                         chats: newChats,
-                                         contacts: newContacts,
-                                         messages: newMessages,
-                                         syncType
-                                       }) => {
-    logger.debug({ id, chats: newChats, contacts: newContacts, messages: newMessages, syncType }, "Received 'messaging-history.set'")
-    // handle the chats, contacts and messages
-    newChats.forEach(chat => { store.chats.upsert(chat, 'append')})
-    newContacts.forEach(contact => { store.contacts.upsert(contact, 'append')})
-    newMessages.forEach(message => { store.messages.upsert(message, 'append')})
-  })
+  const sock = await makeConfiggedWASocket(state, store, saveCreds)
 
   // Bubble QR to waiting HTTP call
   let qrResolver;
@@ -121,34 +109,19 @@ async function createSession(id) {
       if (reason === DisconnectReason.restartRequired) {
         // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
         // We must handle this creating a new socket, existing socket has been closed.
-        const newSock = await makeConfiggedWASocket(state);
-        store.bind(newSock.ev);
+        const newSock = await makeConfiggedWASocket(state, store, saveCreds);
 
-        // Add global error handler to the new socket as well
-        newSock.ev.on("error", (err) => {
-          logger.error({ id, error: err }, "New socket (restart) encountered an error");
-          // Don't delete the session, just log the error
-        });
-
-        newSock.ev.on("creds.update", saveCreds);
         sessions.set(id, {sock: newSock, store, getNewQr});
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
       } else if (reason === DisconnectReason.timedOut) {
         // Handle timeout errors by reconnecting instead of deleting the session
         logger.warn({ id }, "Connection timed out, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(state);
-        store.bind(newSock.ev);
+        const newSock = await makeConfiggedWASocket(state, store, saveCreds);
 
-        // Add global error handler to the new socket as well
-        newSock.ev.on("error", (err) => {
-          logger.error({ id, error: err }, "New socket (timeout recovery) encountered an error");
-          // Don't delete the session, just log the error
-        });
-
-        newSock.ev.on("creds.update", saveCreds);
         sessions.set(id, {sock: newSock, store, getNewQr});
       } else {
+        logger.warn({ id, reason }, "Socket closed with unknown reason");
         await deleteSession(id);
       }
     }
