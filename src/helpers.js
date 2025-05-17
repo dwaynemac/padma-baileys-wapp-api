@@ -36,7 +36,7 @@ async function restoreSessionsFromRedis() {
     for (const sessionId of sessionIds) {
       try {
         logger.info(`Restoring session: ${sessionId}`);
-        await createSession(sessionId, logger);
+        await createSession(sessionId);
         logger.info(`Session restored: ${sessionId}`);
       } catch (err) {
         logger.error({ sessionId, error: err }, "Failed to restore session");
