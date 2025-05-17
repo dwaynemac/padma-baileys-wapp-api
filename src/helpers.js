@@ -57,6 +57,8 @@ async function makeConfiggedWASocket(state, store, saveCreds){
     auth: state,
     markOnlineOnConnect: false, // avoid blocking notifications on whatsapp app @see https://baileys.wiki/docs/socket/configuration#markonlineonconnect
     browser: [deviceName, 'Desktop', version],
+    syncFullHistory: true,                // pide todo el historial
+    fireInitQueries: true,                 // dispara las queries de inicio
     // Add timeout configurations to prevent "Timed Out" errors
     defaultQueryTimeoutMs: 60000, // 1 minute timeout for queries
     connectTimeoutMs: 60000, // 1 minute timeout for connection
