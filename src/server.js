@@ -155,6 +155,7 @@ app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
     return res.status(404).json({ error: "Chat not found" });
   }
 
+  /*
   const labelAssociations = req.session.store.getChatLabels(chatId) || [];
   const labels = labelAssociations.map((assoc) => {
     const label = req.session.store.labels.get(assoc.labelId);
@@ -162,6 +163,8 @@ app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
       return {name: label.name, color: label.color ?? null};
     }
   });
+   */
+  const labels = [];
 
   // Check if this is a self-chat (chat with myself)
   const isMe = sock.user && normalizeJid(chatId) === normalizeJid(sock.user.id);
