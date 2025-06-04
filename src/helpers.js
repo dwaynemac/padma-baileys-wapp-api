@@ -49,7 +49,9 @@ async function restoreSessionsFromRedis() {
   }
 }
 
-async function makeConfiggedWASocket(state, store, saveCreds){
+// Creates and configures a Baileys socket for the given session
+// `sessionId` is used purely for logging & debugging purposes
+async function makeConfiggedWASocket(sessionId, state, store, saveCreds){
   const deviceName = process.env.DEVICE_NAME || "PADMA";
   const sock = makeWASocket({
     logger,
@@ -71,7 +73,8 @@ async function makeConfiggedWASocket(state, store, saveCreds){
 
   // Add global error handler to the new socket as well
   sock.ev.on("error", (err) => {
-    logger.error({ id, error: err }, "New socket (timeout recovery) encountered an error");
+    // include session id so we know which connection failed
+    logger.error({ id: sessionId, error: err }, "New socket (timeout recovery) encountered an error");
     // Don't delete the session, just log the error
   });
 
@@ -95,7 +98,7 @@ async function createSession(id) {
   const { state, saveCreds } = await useRedisAuthState(id);
   const store = makeInMemoryStore({ logger });
 
-  const sock = await makeConfiggedWASocket(state, store, saveCreds)
+  const sock = await makeConfiggedWASocket(id, state, store, saveCreds)
 
   // Bubble QR to waiting HTTP call
   let qrResolver;
@@ -111,15 +114,20 @@ async function createSession(id) {
       if (reason === DisconnectReason.restartRequired) {
         // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
         // We must handle this creating a new socket, existing socket has been closed.
-        const newSock = await makeConfiggedWASocket(state, store, saveCreds);
+        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
 
         sessions.set(id, {sock: newSock, store, getNewQr});
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
-      } else if (reason === DisconnectReason.timedOut) {
-        // Handle timeout errors by reconnecting instead of deleting the session
-        logger.warn({ id }, "Connection timed out, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(state, store, saveCreds);
+      } else if (
+        reason === DisconnectReason.timedOut ||
+        reason === DisconnectReason.connectionClosed ||
+        reason === DisconnectReason.connectionLost ||
+        reason === DisconnectReason.connectionReplaced
+      ) {
+        // Handle temporary connection issues by reconnecting instead of deleting the session
+        logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
+        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
 
         sessions.set(id, {sock: newSock, store, getNewQr});
       } else {
