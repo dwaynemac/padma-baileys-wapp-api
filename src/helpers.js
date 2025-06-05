@@ -93,6 +93,11 @@ async function makeConfiggedWASocket(id, state, store, saveCreds, onQr) {
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode;
       logger.warn({ id, reason }, "Socket closed");
+      // Antes de reconectar, verifica si la sesión sigue activa
+      if (!sessions.has(id)) {
+        logger.info({ id }, "Session was deleted, not reconnecting");
+        return;
+      }
       // Evitar recursión si el socket está esperando QR (no autenticado)
       if (reason === DisconnectReason.restartRequired && !qr) {
         logger.info("Restart required by WA, reconnecting...");
