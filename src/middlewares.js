@@ -41,7 +41,7 @@ function requestLogger(req, res, next) {
     url: req.url,
     query: req.query,
     ip: req.ip
-  }, `Request ${req.url}`);
+  }, `${req.method} ${req.url}`);
   next();
 }
 
