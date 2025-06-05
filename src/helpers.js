@@ -49,74 +49,54 @@ async function restoreSessionsFromRedis() {
   }
 }
 
-// Creates and configures a Baileys socket for the given session
-// `sessionId` is used purely for logging & debugging purposes
-async function makeConfiggedWASocket(sessionId, state, store, saveCreds){
+/**
+ * Creates and configures a Baileys socket para la sesión dada y maneja el QR correctamente
+ * @param {string} id - Session identifier
+ * @param {object} state - Auth state
+ * @param {object} store - In-memory store
+ * @param {function} saveCreds - Function to save credentials
+ * @param {function} onQr - Callback para QR (resolve de la promesa)
+ * @returns {Promise<object>} The configured socket
+ */
+async function makeConfiggedWASocket(id, state, store, saveCreds, onQr) {
+  logger.debug("Creating and configuring WA socket with connection handler...");
   const deviceName = process.env.DEVICE_NAME || "PADMA";
   const sock = makeWASocket({
     logger,
     printQRInTerminal: false,
     auth: state,
-    markOnlineOnConnect: false, // avoid blocking notifications on whatsapp app @see https://baileys.wiki/docs/socket/configuration#markonlineonconnect
+    markOnlineOnConnect: false,
     browser: [deviceName, 'Desktop', version],
-    syncFullHistory: true,                // pide todo el historial
-    fireInitQueries: true,                 // dispara las queries de inicio
-    // Add timeout configurations to prevent "Timed Out" errors
-    defaultQueryTimeoutMs: 60000, // 1 minute timeout for queries
-    connectTimeoutMs: 60000, // 1 minute timeout for connection
-    keepAliveIntervalMs: 25000, // 25 seconds ping-pong interval
-    retryRequestDelayMs: 500, // 500ms delay between retries
-    maxMsgRetryCount: 5, // Maximum retry count for messages
+    syncFullHistory: true,
+    fireInitQueries: true,
+    defaultQueryTimeoutMs: 60000,
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 25000,
+    retryRequestDelayMs: 500,
+    maxMsgRetryCount: 5,
   });
 
   store.bind(sock.ev);
 
-  // Add global error handler to the new socket as well
   sock.ev.on("error", (err) => {
-    // include session id so we know which connection failed
-    logger.error({ id: sessionId, error: err }, "New socket (timeout recovery) encountered an error");
-    // Don't delete the session, just log the error
+    logger.error({ id, error: err }, "New socket (timeout recovery) encountered an error");
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  return sock
-}
-
-/**
- * Sets up the connection.update event handler for a socket
- * @param {object} sock - The socket to set up
- * @param {string} id - Session identifier
- * @param {object} state - Auth state
- * @param {object} store - In-memory store
- * @param {function} getNewQr - Function to get a new QR code
- * @param {function} saveCreds - Function to save credentials
- * @returns {object} The configured socket
- */
-function setupConnectionUpdateHandler(sock, id, state, store, getNewQr, saveCreds) {
-  logger.debug("calling setupConnectionUpdateHandler... ");
-  let qrResolver = null;
-
-  if (typeof getNewQr === 'function') {
-    qrResolver = getNewQr().then ? null : getNewQr;
-  }
-
+  // Manejo de QR
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
-    if (qr && qrResolver) {
-      qrResolver(qr);
-      qrResolver = null;
+    if (qr && typeof onQr === 'function') {
+      onQr(qr); // Resuelve la promesa de getNewQr
     }
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode;
       logger.warn({ id, reason }, "Socket closed");
       if (reason === DisconnectReason.restartRequired) {
-        // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
-        // We must handle this creating a new socket, existing socket has been closed.
         logger.info("Restart required by WA, reconnecting...");
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-        setupConnectionUpdateHandler(newSock, id, state, store, getNewQr, saveCreds);
-        sessions.set(id, {sock: newSock, store, getNewQr});
+        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds, onQr);
+        sessions.set(id, {sock: newSock, store, getNewQr: () => new Promise(r => onQr = r)});
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
       } else if (
@@ -125,11 +105,9 @@ function setupConnectionUpdateHandler(sock, id, state, store, getNewQr, saveCred
         reason === DisconnectReason.connectionLost ||
         reason === DisconnectReason.connectionReplaced
       ) {
-        // Handle temporary connection issues by reconnecting instead of deleting the session
         logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-        setupConnectionUpdateHandler(newSock, id, state, store, getNewQr, saveCreds);
-        sessions.set(id, {sock: newSock, store, getNewQr});
+        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds, onQr);
+        sessions.set(id, {sock: newSock, store, getNewQr: () => new Promise(r => onQr = r)});
       } else {
         logger.warn({ id, reason }, "Socket closed with unknown reason");
         await deleteSession(id);
@@ -155,20 +133,23 @@ async function createSession(id) {
   const { state, saveCreds } = await useRedisAuthState(id);
   const store = makeInMemoryStore({ logger });
 
-  const sock = await makeConfiggedWASocket(id, state, store, saveCreds);
+  // Variable para guardar el resolve de la promesa QR
+  let qrResolver = null;
 
-  // Variable for QR resolver
-  let qrResolver;
-
-  // Utility function that waits for a fresh QR string
+  // Utility function que espera por un QR nuevo
   function getNewQr() {
     return new Promise((resolve) => {
       qrResolver = resolve;
     });
   }
 
-  // Set up connection update handler
-  setupConnectionUpdateHandler(sock, id, state, store, getNewQr, saveCreds);
+  // Crear socket y pasar el resolve de QR
+  const sock = await makeConfiggedWASocket(id, state, store, saveCreds, (qr) => {
+    if (qrResolver) {
+      qrResolver(qr);
+      qrResolver = null;
+    }
+  });
 
   const session = { sock, store, getNewQr };
   sessions.set(id, session);
