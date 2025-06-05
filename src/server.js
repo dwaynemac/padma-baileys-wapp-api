@@ -111,7 +111,7 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
   const { sock } = req.session;
   try {
     await sock.logout();
-    await deleteSession(sessionId, redisClient);
+    await deleteSession(sessionId);
     res.json({ status: "logged_out" });
   } catch (err) {
     logger.error({err}, 'Failed to logout')
