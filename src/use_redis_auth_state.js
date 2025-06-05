@@ -73,4 +73,4 @@ async function useRedisAuthState(sessionId) {
   };
 }
 
-export { useRedisAuthState, redisClient }
+export { useRedisAuthState, redisClient };

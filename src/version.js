@@ -2,4 +2,3 @@
 // mayor.minor.patch
 const version = '0.4.0'
 export default version
-
