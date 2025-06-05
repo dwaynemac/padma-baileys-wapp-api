@@ -112,6 +112,7 @@ async function createSession(id) {
       const reason = lastDisconnect?.error?.output?.statusCode;
       logger.warn({ id, reason }, "Socket closed");
       if (reason === DisconnectReason.restartRequired) {
+        logger.info("Restart required by WA, reconnecting...");
         // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
         // We must handle this creating a new socket, existing socket has been closed.
         const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
