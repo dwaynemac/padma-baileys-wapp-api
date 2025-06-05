@@ -93,17 +93,18 @@ async function makeConfiggedWASocket(id, state, store, saveCreds, onQr) {
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode;
       logger.warn({ id, reason }, "Socket closed");
-      if (reason === DisconnectReason.restartRequired) {
+      // Evitar recursión si el socket está esperando QR (no autenticado)
+      if (reason === DisconnectReason.restartRequired && !qr) {
         logger.info("Restart required by WA, reconnecting...");
         const newSock = await makeConfiggedWASocket(id, state, store, saveCreds, onQr);
         sessions.set(id, {sock: newSock, store, getNewQr: () => new Promise(r => onQr = r)});
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
       } else if (
-        reason === DisconnectReason.timedOut ||
+        (reason === DisconnectReason.timedOut ||
         reason === DisconnectReason.connectionClosed ||
         reason === DisconnectReason.connectionLost ||
-        reason === DisconnectReason.connectionReplaced
+        reason === DisconnectReason.connectionReplaced) && !qr
       ) {
         logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
         const newSock = await makeConfiggedWASocket(id, state, store, saveCreds, onQr);
