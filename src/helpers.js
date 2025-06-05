@@ -84,6 +84,15 @@ async function makeConfiggedWASocket(id, state, store, saveCreds, onQr) {
 
   sock.ev.on("creds.update", saveCreds);
 
+  // Añade la marca de reconexión en el objeto de sesión si no existe
+  if (!sessions.has(id)) {
+    sessions.set(id, { sock, store, getNewQr: () => new Promise(r => onQr = r), isReconnecting: false });
+  } else if (sessions.has(id) && sessions.get(id).isReconnecting === undefined) {
+    // Si la sesión existe pero no tiene la marca, la añadimos
+    const session = sessions.get(id);
+    sessions.set(id, { ...session, isReconnecting: false });
+  }
+
   // Manejo de QR
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -93,27 +102,28 @@ async function makeConfiggedWASocket(id, state, store, saveCreds, onQr) {
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode;
       logger.warn({ id, reason }, "Socket closed");
-      // Antes de reconectar, verifica si la sesión sigue activa
       if (!sessions.has(id)) {
         logger.info({ id }, "Session was deleted, not reconnecting");
         return;
       }
-      // Evitar recursión si el socket está esperando QR (no autenticado)
-      if (reason === DisconnectReason.restartRequired && !qr) {
-        logger.info("Restart required by WA, reconnecting...");
+      const session = sessions.get(id);
+      // Evitar recursión si ya se está reconectando
+      if ((reason === DisconnectReason.restartRequired && !qr) ||
+          ((reason === DisconnectReason.timedOut ||
+            reason === DisconnectReason.connectionClosed ||
+            reason === DisconnectReason.connectionLost ||
+            reason === DisconnectReason.connectionReplaced) && !qr)) {
+        if (session.isReconnecting) {
+          logger.info({ id }, "Already reconnecting, skipping...");
+          return;
+        }
+        session.isReconnecting = true;
+        logger.info("Restart required by WA, conectando una sola vez...");
         const newSock = await makeConfiggedWASocket(id, state, store, saveCreds, onQr);
-        sessions.set(id, {sock: newSock, store, getNewQr: () => new Promise(r => onQr = r)});
+        sessions.set(id, { ...session, sock: newSock, isReconnecting: false });
+        return;
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
-      } else if (
-        (reason === DisconnectReason.timedOut ||
-        reason === DisconnectReason.connectionClosed ||
-        reason === DisconnectReason.connectionLost ||
-        reason === DisconnectReason.connectionReplaced) && !qr
-      ) {
-        logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds, onQr);
-        sessions.set(id, {sock: newSock, store, getNewQr: () => new Promise(r => onQr = r)});
       } else {
         logger.warn({ id, reason }, "Socket closed with unknown reason");
         await deleteSession(id);
