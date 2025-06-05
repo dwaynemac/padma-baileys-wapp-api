@@ -14,7 +14,8 @@ import {
 } from "./helpers.js";
 import {
   requireSession,
-  apiKeyAuth
+  apiKeyAuth,
+  requestLogger
 } from './middlewares.js'
 
 // ---------- Globals ----------
@@ -23,6 +24,7 @@ const PORT = process.env.PORT || 3000;
 // ---------- Express API ----------
 const app = express();
 app.use(express.json());
+app.use(requestLogger);
 
 /*  AUTHENTICATION
  All requests should have x-api-key header with valid api key.
@@ -59,7 +61,6 @@ app.get("/sessions", (req, res) => {
  * --
  */
 app.post("/sessions/:sessionId", async (req, res) => {
-  logger.debug({sessionId: req.params.sessionId}, 'POST /sessions/:sessionId')
   const { sessionId } = req.params;
   const { sock, store } = await createSession(sessionId);
 
@@ -88,7 +89,6 @@ app.post("/sessions/:sessionId", async (req, res) => {
  * Returns information about a specific session.
  */
 app.get("/sessions/:sessionId", requireSession, (req, res) => {
-  logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId')
   const { sessionId } = req.params;
   const { sock } = req.session;
 
@@ -107,7 +107,6 @@ app.get("/sessions/:sessionId", requireSession, (req, res) => {
  * Logs out & removes the session dir.
  */
 app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
-  logger.debug({sessionId: req.params.sessionId}, 'DELETE /sessions/:sessionId')
   const { sessionId } = req.params;
   const { sock } = req.session;
   try {
@@ -125,7 +124,6 @@ app.delete("/sessions/:sessionId", requireSession, async (req, res) => {
  * Lists recent chats with basic metadata.
  */
 app.get("/sessions/:sessionId/chats", requireSession, (req, res) => {
-  logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId/chats')
   const { store } = req.session;
   const chats = store.chats
     .all()
@@ -144,7 +142,6 @@ app.get("/sessions/:sessionId/chats", requireSession, (req, res) => {
  * Returns details of a single chat (not including messages).
  */
 app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
-  logger.debug({sessionId: req.params.sessionId, chatId: req.params.chatId}, 'GET /sessions/:sessionId/chats/:chatId')
   const { store, sock } = req.session;
   const { chatId } = req.params;
 
@@ -193,7 +190,6 @@ app.get("/sessions/:sessionId/chats/:chatId", requireSession, (req, res) => {
  * Returns the most recent N messages from a chat.
  */
 app.get("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (req, res) => {
-  logger.debug({sessionId: req.params.sessionId}, 'GET /sessions/:sessionId/chats/:chatId/messages')
   const { store } = req.session;
   const { chatId } = req.params;
   const limit = Number(req.query.limit) || 50;
@@ -296,7 +292,6 @@ app.get("/sessions/:sessionId/chats/:chatId/contact", requireSession, async (req
  * Sends a new message to a chat.
  */
 app.post("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (req, res) => {
-  logger.debug({sessionId: req.params.sessionId, chatId: req.params.chatId}, 'POST /sessions/:sessionId/chats/:chatId/messages')
   const { sock } = req.session;
   const { chatId } = req.params;
   const { text } = req.body;

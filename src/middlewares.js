@@ -1,4 +1,5 @@
 import { sessions } from './helpers.js'
+import logger from './logger.js'
 
 /**
  * Express middleware to ensure a session exists
@@ -28,4 +29,20 @@ function apiKeyAuth(apiKey) {
   };
 }
 
-export { requireSession, apiKeyAuth };
+/**
+ * Express middleware to log all requests at debug level
+ * @param {object} req - Express request object
+ * @param {object} res - Express response object
+ * @param {function} next - Express next function
+ */
+function requestLogger(req, res, next) {
+  logger.debug({
+    method: req.method,
+    url: req.url,
+    query: req.query,
+    ip: req.ip
+  }, 'Incoming request');
+  next();
+}
+
+export { requireSession, apiKeyAuth, requestLogger };
