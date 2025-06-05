@@ -84,6 +84,63 @@ async function makeConfiggedWASocket(sessionId, state, store, saveCreds){
 }
 
 /**
+ * Sets up the connection.update event handler for a socket
+ * @param {object} sock - The socket to set up
+ * @param {string} id - Session identifier
+ * @param {object} state - Auth state
+ * @param {object} store - In-memory store
+ * @param {function} getNewQr - Function to get a new QR code
+ * @param {function} saveCreds - Function to save credentials
+ * @returns {object} The configured socket
+ */
+function setupConnectionUpdateHandler(sock, id, state, store, getNewQr, saveCreds) {
+  logger.debug("calling setupConnectionUpdateHandler... ");
+  let qrResolver = null;
+
+  if (typeof getNewQr === 'function') {
+    qrResolver = getNewQr().then ? null : getNewQr;
+  }
+
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if (qr && qrResolver) {
+      qrResolver(qr);
+      qrResolver = null;
+    }
+    if (connection === "close") {
+      const reason = lastDisconnect?.error?.output?.statusCode;
+      logger.warn({ id, reason }, "Socket closed");
+      if (reason === DisconnectReason.restartRequired) {
+        // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
+        // We must handle this creating a new socket, existing socket has been closed.
+        logger.info("Restart required by WA, reconnecting...");
+        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
+        setupConnectionUpdateHandler(newSock, id, state, store, getNewQr, saveCreds);
+        sessions.set(id, {sock: newSock, store, getNewQr});
+      } else if (reason === DisconnectReason.loggedOut) {
+        await deleteSession(id);
+      } else if (
+        reason === DisconnectReason.timedOut ||
+        reason === DisconnectReason.connectionClosed ||
+        reason === DisconnectReason.connectionLost ||
+        reason === DisconnectReason.connectionReplaced
+      ) {
+        // Handle temporary connection issues by reconnecting instead of deleting the session
+        logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
+        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
+        setupConnectionUpdateHandler(newSock, id, state, store, getNewQr, saveCreds);
+        sessions.set(id, {sock: newSock, store, getNewQr});
+      } else {
+        logger.warn({ id, reason }, "Socket closed with unknown reason");
+        await deleteSession(id);
+      }
+    }
+  });
+
+  return sock;
+}
+
+/**
  * Creates a new WhatsApp session or returns an existing one
  * @param {string} id - Session identifier
  * @returns {Promise<object>} Session object with sock, store, and getNewQr
@@ -98,45 +155,10 @@ async function createSession(id) {
   const { state, saveCreds } = await useRedisAuthState(id);
   const store = makeInMemoryStore({ logger });
 
-  const sock = await makeConfiggedWASocket(id, state, store, saveCreds)
+  const sock = await makeConfiggedWASocket(id, state, store, saveCreds);
 
-  // Bubble QR to waiting HTTP call
+  // Variable for QR resolver
   let qrResolver;
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr && qrResolver) {
-      qrResolver(qr);
-      qrResolver = null;
-    }
-    if (connection === "close") {
-      const reason = lastDisconnect?.error?.output?.statusCode;
-      logger.warn({ id, reason }, "Socket closed");
-      if (reason === DisconnectReason.restartRequired) {
-        logger.info("Restart required by WA, reconnecting...");
-        // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
-        // We must handle this creating a new socket, existing socket has been closed.
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-
-        sessions.set(id, {sock: newSock, store, getNewQr});
-      } else if (reason === DisconnectReason.loggedOut) {
-        await deleteSession(id);
-      } else if (
-        reason === DisconnectReason.timedOut ||
-        reason === DisconnectReason.connectionClosed ||
-        reason === DisconnectReason.connectionLost ||
-        reason === DisconnectReason.connectionReplaced
-      ) {
-        // Handle temporary connection issues by reconnecting instead of deleting the session
-        logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-
-        sessions.set(id, {sock: newSock, store, getNewQr});
-      } else {
-        logger.warn({ id, reason }, "Socket closed with unknown reason");
-        await deleteSession(id);
-      }
-    }
-  });
 
   // Utility function that waits for a fresh QR string
   function getNewQr() {
@@ -144,6 +166,9 @@ async function createSession(id) {
       qrResolver = resolve;
     });
   }
+
+  // Set up connection update handler
+  setupConnectionUpdateHandler(sock, id, state, store, getNewQr, saveCreds);
 
   const session = { sock, store, getNewQr };
   sessions.set(id, session);
