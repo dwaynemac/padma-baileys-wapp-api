@@ -83,6 +83,35 @@ async function makeConfiggedWASocket(sessionId, state, store, saveCreds){
   return sock
 }
 
+// Creates a Baileys store that persists to Redis
+async function makeRedisStore(sessionId) {
+  const store = makeInMemoryStore({ logger });
+
+  const redisKey = `${sessionId}:store`;
+
+  try {
+    const dataStr = await redisClient.get(redisKey);
+    if (dataStr) {
+      store.fromJSON(JSON.parse(dataStr));
+    }
+  } catch (err) {
+    logger.error({ sessionId, err }, "Failed to load store from Redis");
+  }
+
+  const saveToRedis = async () => {
+    try {
+      await redisClient.set(redisKey, JSON.stringify(store.toJSON()));
+    } catch (err) {
+      logger.error({ sessionId, err }, "Failed to save store to Redis");
+    }
+  };
+
+  // Save store every 10 seconds
+  setInterval(saveToRedis, 10000);
+
+  return store;
+}
+
 /**
  * Creates a new WhatsApp session or returns an existing one
  * @param {string} id - Session identifier
@@ -96,7 +125,7 @@ async function createSession(id) {
   }
 
   const { state, saveCreds } = await useRedisAuthState(id);
-  const store = makeInMemoryStore({ logger });
+  const store = await makeRedisStore(id);
 
   const sock = await makeConfiggedWASocket(id, state, store, saveCreds)
 
@@ -179,6 +208,7 @@ export {
   getActiveSessions,
   deleteSession,
   sessions,
+  makeRedisStore,
   normalizeJid,
   restoreSessionsFromRedis
 };
