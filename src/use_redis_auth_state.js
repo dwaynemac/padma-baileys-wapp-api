@@ -1,7 +1,7 @@
 // Dependencia necesaria: npm install redis
 import { createClient } from 'redis';
 import baileys from '@whiskeysockets/baileys';
-const { initAuthCreds, proto } = baileys;
+const { initAuthCreds, proto, BufferJSON } = baileys;
 
 // Cliente Redis único (se puede reusar para todas las sesiones)
 const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
@@ -15,7 +15,7 @@ await redisClient.connect();  // Conecta al servidor Redis
 async function useRedisAuthState(sessionId) {
   // Obtener credenciales almacenadas o inicializar nuevas si no existen
   const credsStr = await redisClient.hGet(sessionId, 'creds');
-  const creds = credsStr ? JSON.parse(credsStr) : initAuthCreds();
+  const creds = credsStr ? JSON.parse(credsStr, BufferJSON.reviver) : initAuthCreds();
 
   return {
     state: {
@@ -55,7 +55,7 @@ async function useRedisAuthState(sessionId) {
               const redisKey = `${category}-${id}`;
               if (item) {
                 // Serializar a JSON (conversión a base64 si contiene datos binarios)
-                const valueStr = JSON.stringify(item);
+                const valueStr = JSON.stringify(item, BufferJSON.replacer);
                 pipeline.hSet(sessionId, redisKey, valueStr);
               } else {
                 pipeline.hDel(sessionId, redisKey);
@@ -68,7 +68,7 @@ async function useRedisAuthState(sessionId) {
     },
     /** Guarda los credenciales actuales en Redis (ejecutar en cada actualización de creds) **/
     saveCreds: async () => {
-      await redisClient.hSet(sessionId, 'creds', JSON.stringify(creds));
+      await redisClient.hSet(sessionId, 'creds', JSON.stringify(creds, BufferJSON.replacer));
     }
   };
 }

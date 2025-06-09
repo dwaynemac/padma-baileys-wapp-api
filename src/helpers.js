@@ -1,7 +1,8 @@
 import {
   makeWASocket,
   makeInMemoryStore,
-  DisconnectReason
+  DisconnectReason,
+  BufferJSON
 } from "@whiskeysockets/baileys";
 import { useRedisAuthState, redisClient } from "./use_redis_auth_state.js"
 import logger from './logger.js'
@@ -92,7 +93,7 @@ async function makeRedisStore(sessionId) {
   try {
     const dataStr = await redisClient.get(redisKey);
     if (dataStr) {
-      store.fromJSON(JSON.parse(dataStr));
+      store.fromJSON(JSON.parse(dataStr, BufferJSON.reviver));
     }
   } catch (err) {
     logger.error({ sessionId, err }, "Failed to load store from Redis");
@@ -100,7 +101,7 @@ async function makeRedisStore(sessionId) {
 
   const saveToRedis = async () => {
     try {
-      await redisClient.set(redisKey, JSON.stringify(store.toJSON()));
+      await redisClient.set(redisKey, JSON.stringify(store.toJSON(), BufferJSON.replacer));
     } catch (err) {
       logger.error({ sessionId, err }, "Failed to save store to Redis");
     }
