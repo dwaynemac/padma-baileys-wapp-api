@@ -32,7 +32,7 @@ async function useRedisAuthState(sessionId) {
             let valueStr = await redisClient.hGet(sessionId, redisKey);
             if (valueStr) {
               // Reconstruir objeto/Buffer desde JSON
-              let value = JSON.parse(valueStr);
+              let value = JSON.parse(valueStr, BufferJSON.reviver);
               if (type === 'app-state-sync-key' && value) {
                 // Reconstruir tipo proto Message.AppStateSyncKeyData
                 value = proto.Message.AppStateSyncKeyData.fromObject(value);
