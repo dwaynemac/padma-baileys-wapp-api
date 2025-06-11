@@ -105,20 +105,30 @@ async function createSession(id) {
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
     if (qr && qrResolver) {
+      logger.debug({ id, qr }, "QR code received for session");
       qrResolver(qr);
       qrResolver = null;
     }
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode;
-      logger.warn({ id, reason }, "Socket closed");
+      const shouldReconnect = reason !== DisconnectReason.loggedOut;
+      
+      logger.warn({ id, connection, reason, shouldReconnect, error: lastDisconnect?.error }, "Socket connection closed");
+
       if (reason === DisconnectReason.restartRequired) {
-        logger.info("Restart required by WA, reconnecting...");
+        logger.info({ id }, "Restart required by WA, attempting to reconnect...");
         // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
         // We must handle this creating a new socket, existing socket has been closed.
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-
-        sessions.set(id, {sock: newSock, store, getNewQr});
+        try {
+          const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
+          sessions.set(id, {sock: newSock, store, getNewQr});
+          logger.info({ id }, "Reconnected successfully after restartRequired.");
+        } catch (err) {
+          logger.error({ id, err }, "Failed to reconnect after restartRequired.");
+          // Decide if session should be deleted or retried further
+        }
       } else if (reason === DisconnectReason.loggedOut) {
+        logger.info({ id }, "Logged out by WA, deleting session.");
         await deleteSession(id);
       } else if (
         reason === DisconnectReason.timedOut ||
@@ -126,15 +136,32 @@ async function createSession(id) {
         reason === DisconnectReason.connectionLost ||
         reason === DisconnectReason.connectionReplaced
       ) {
-        // Handle temporary connection issues by reconnecting instead of deleting the session
-        logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-
-        sessions.set(id, {sock: newSock, store, getNewQr});
+        logger.warn({ id, reason }, "Temporary connection issue, attempting to reconnect...");
+        try {
+          const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
+          sessions.set(id, {sock: newSock, store, getNewQr});
+          logger.info({ id }, "Reconnected successfully after temporary issue.");
+        } catch (err) {
+          logger.error({ id, err, reason }, "Failed to reconnect after temporary issue.");
+          // Potentially add a retry mechanism with backoff here instead of immediate deletion
+          // For now, we are not deleting the session, allowing Redis to persist it for a later manual/automatic restore.
+        }
       } else {
-        logger.warn({ id, reason }, "Socket closed with unknown reason");
-        await deleteSession(id);
+        logger.error({ id, reason, error: lastDisconnect?.error }, "Socket closed with unhandled or unknown reason. Attempting to reconnect as a fallback.");
+        // Fallback: attempt to reconnect for unknown reasons rather than deleting session
+        try {
+          const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
+          sessions.set(id, {sock: newSock, store, getNewQr});
+          logger.info({ id }, "Reconnected successfully after unknown disconnection reason.");
+        } catch (err) {
+          logger.error({ id, err, reason }, "Failed to reconnect after unknown disconnection reason.");
+          // As a last resort, if reconnection fails even for unknown reasons,
+          // we might consider deleting the session or marking it as unhealthy.
+          // For now, we are not deleting the session.
+        }
       }
+    } else if (connection === "open") {
+      logger.info({ id, user: sock.user?.id }, "Socket connection opened successfully.");
     }
   });
 
