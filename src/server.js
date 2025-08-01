@@ -69,14 +69,18 @@ app.post("/sessions/:sessionId", async (req, res) => {
     try {
       await store.chats.all(); // check if we can load chats
       isHealthy = true;
-    } catch {}
+      logger.debug({ sessionId }, "Session health check passed");
+    } catch (healthErr) {
+      logger.warn({ sessionId, error: healthErr }, "Session health check failed");
+      isHealthy = false;
+    }
   }
 
   if (isHealthy) {
     return res.json({ status: "already_logged_in" });
   } else {
-    // Session is brand-new or broken—delete and restart session for clean auth flow
-    await deleteSession(sessionId);
+    // Generate QR without deleting/recreating session to avoid race conditions
+    logger.info({ sessionId }, "Session needs authentication, generating QR");
     const { getNewQr } = await createSession(sessionId);
     const qrString = await getNewQr();
     const qrPng = await qrcode.toDataURL(qrString);

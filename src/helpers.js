@@ -10,6 +10,35 @@ import version from './version.js'
 // Map to store active sessions
 const sessions = new Map(); // sessionId -> { socket, store }
 
+// Map to track reconnection attempts for exponential backoff
+const reconnectionAttempts = new Map(); // sessionId -> { attempts, lastAttempt, backoffMs }
+
+/**
+ * Calculate exponential backoff delay with jitter
+ * @param {number} attempts - Number of reconnection attempts
+ * @returns {number} Delay in milliseconds
+ */
+function calculateBackoff(attempts) {
+  const baseDelay = 1000; // 1 second
+  const maxDelay = 300000; // 5 minutes
+  const delay = Math.min(baseDelay * Math.pow(2, attempts), maxDelay);
+  return delay + Math.random() * 1000; // Add jitter
+}
+
+/**
+ * Check if reconnection should be attempted based on backoff
+ * @param {string} sessionId - Session identifier
+ * @returns {boolean} Whether reconnection should be attempted
+ */
+function shouldAttemptReconnection(sessionId) {
+  const reconnectInfo = reconnectionAttempts.get(sessionId);
+  if (!reconnectInfo) return true; // First attempt
+  
+  const now = Date.now();
+  const timeSinceLastAttempt = now - reconnectInfo.lastAttempt;
+  return timeSinceLastAttempt >= reconnectInfo.backoffMs;
+}
+
 /**
  * Restores all sessions from Redis when the server starts
  * @returns {Promise<void>}
@@ -112,12 +141,25 @@ async function createSession(id) {
       const reason = lastDisconnect?.error?.output?.statusCode;
       logger.warn({ id, reason }, "Socket closed");
       if (reason === DisconnectReason.restartRequired) {
-        logger.info("Restart required by WA, reconnecting...");
+        logger.info({ id }, "Restart required by WA, reconnecting...");
         // After scanning the QR, WhatsApp will forcibly disconnect you, forcing a reconnect such that we can present the authentication credentials. This is not an error.
         // We must handle this creating a new socket, existing socket has been closed.
+        
+        // Clean up old socket before creating new one
+        const oldSession = sessions.get(id);
+        if (oldSession && oldSession.sock && oldSession.sock !== sock) {
+          try {
+            oldSession.sock.end();
+          } catch (cleanupErr) {
+            logger.warn({ id, error: cleanupErr }, "Error cleaning up old socket");
+          }
+        }
+        
         const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-
         sessions.set(id, {sock: newSock, store, getNewQr});
+        
+        // Reset backoff on successful connection
+        reconnectionAttempts.delete(id);
       } else if (reason === DisconnectReason.loggedOut) {
         await deleteSession(id);
       } else if (
@@ -126,11 +168,44 @@ async function createSession(id) {
         reason === DisconnectReason.connectionLost ||
         reason === DisconnectReason.connectionReplaced
       ) {
-        // Handle temporary connection issues by reconnecting instead of deleting the session
-        logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
-        const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-
-        sessions.set(id, {sock: newSock, store, getNewQr});
+        // Handle temporary connection issues by reconnecting with exponential backoff
+        if (shouldAttemptReconnection(id)) {
+          logger.warn({ id, reason }, "Connection lost, attempting to reconnect");
+          
+          // Clean up old socket before creating new one
+          const oldSession = sessions.get(id);
+          if (oldSession && oldSession.sock && oldSession.sock !== sock) {
+            try {
+              oldSession.sock.end();
+            } catch (cleanupErr) {
+              logger.warn({ id, error: cleanupErr }, "Error cleaning up old socket");
+            }
+          }
+          
+          // Update reconnection tracking
+          const reconnectInfo = reconnectionAttempts.get(id) || { attempts: 0, lastAttempt: 0, backoffMs: 0 };
+          reconnectInfo.attempts++;
+          reconnectInfo.lastAttempt = Date.now();
+          reconnectInfo.backoffMs = calculateBackoff(reconnectInfo.attempts);
+          reconnectionAttempts.set(id, reconnectInfo);
+          
+          logger.info({ id, attempts: reconnectInfo.attempts, backoffMs: reconnectInfo.backoffMs }, "Scheduling reconnection with backoff");
+          
+          // Schedule reconnection with backoff
+          setTimeout(async () => {
+            try {
+              const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
+              sessions.set(id, {sock: newSock, store, getNewQr});
+              logger.info({ id }, "Reconnection successful");
+              // Reset backoff on successful connection
+              reconnectionAttempts.delete(id);
+            } catch (reconnectErr) {
+              logger.error({ id, error: reconnectErr }, "Reconnection failed");
+            }
+          }, reconnectInfo.backoffMs);
+        } else {
+          logger.info({ id }, "Reconnection attempt skipped due to backoff");
+        }
       } else {
         logger.warn({ id, reason }, "Socket closed with unknown reason");
         await deleteSession(id);
@@ -163,8 +238,19 @@ function getActiveSessions() {
  * @param {string} sessionId - Session identifier
  */
 async function deleteSession(sessionId) {
+  // Properly close socket before deletion
+  const session = sessions.get(sessionId);
+  if (session && session.sock) {
+    try {
+      session.sock.end();
+    } catch (err) {
+      logger.warn({ sessionId, error: err }, "Error closing socket during session deletion");
+    }
+  }
+  
   sessions.delete(sessionId);
-  redisClient.del(sessionId)
+  reconnectionAttempts.delete(sessionId); // Clean up tracking
+  await redisClient.del(sessionId); // Fixed: Await Redis deletion
 }
 
 /**
