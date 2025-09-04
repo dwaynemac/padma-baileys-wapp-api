@@ -4,6 +4,7 @@ import {
   DisconnectReason,
   makeCacheManagerAuthState
 } from "@whiskeysockets/baileys";
+import { caching } from "cache-manager";
 import logger from './logger.js'
 import version from './version.js'
 
@@ -86,7 +87,8 @@ async function createSession(id) {
     return sessions.get(id);
   }
 
-  const { state, saveCreds, clearState } = await makeCacheManagerAuthState({ store: 'memory', ttl: 0 }, id);
+  const authCache = await caching('memory', { ttl: 0 });
+  const { state, saveCreds, clearState } = await makeCacheManagerAuthState(authCache, id);
   const store = makeInMemoryStore({ logger });
 
   const sock = await makeConfiggedWASocket(id, state, store, saveCreds)

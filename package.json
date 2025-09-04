@@ -10,6 +10,7 @@
   "private": true,
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.16",
+    "cache-manager": "^5.7.6",
     "express": "^5.1.0",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4"
