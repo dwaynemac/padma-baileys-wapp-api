@@ -12,10 +12,7 @@ Run ```docker-compose up```
 - **PORT:** el puerto en que corre el server
 - **LOG_LEVEL:** 'debug', 'info', 'warn'
 - **DEVICE_NAME:** nombre del device en whatsapp al vincularlo
-- **REDIS_URL:** url de redis
-
-## REDIS
-Redis should be available at **REDIS_URL**.
+The server stores session data in memory, so all sessions are lost when the process restarts.
 
 # == Server endpoints ==
 

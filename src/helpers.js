@@ -1,9 +1,9 @@
 import {
   makeWASocket,
   makeInMemoryStore,
-  DisconnectReason
+  DisconnectReason,
+  makeCacheManagerAuthState
 } from "@whiskeysockets/baileys";
-import { useRedisAuthState, redisClient } from "./use_redis_auth_state.js"
 import logger from './logger.js'
 import version from './version.js'
 
@@ -39,44 +39,6 @@ function shouldAttemptReconnection(sessionId) {
   return timeSinceLastAttempt >= reconnectInfo.backoffMs;
 }
 
-/**
- * Restores all sessions from Redis when the server starts
- * @returns {Promise<void>}
- */
-async function restoreSessionsFromRedis() {
-  try {
-    logger.info("Restoring sessions from Redis...");
-
-    // Get all keys in Redis
-    const keys = await redisClient.keys("*");
-
-    // Filter keys that have 'creds' field (these are session IDs)
-    const sessionIds = [];
-    for (const key of keys) {
-      const hasCreds = await redisClient.hExists(key, 'creds');
-      if (hasCreds) {
-        sessionIds.push(key);
-      }
-    }
-
-    logger.info(`Found ${sessionIds.length} sessions in Redis`);
-
-    // Restore each session
-    for (const sessionId of sessionIds) {
-      try {
-        logger.info(`Restoring session: ${sessionId}`);
-        await createSession(sessionId);
-        logger.info(`Session restored: ${sessionId}`);
-      } catch (err) {
-        logger.error({ sessionId, error: err }, "Failed to restore session");
-      }
-    }
-
-    logger.info("Session restoration complete");
-  } catch (err) {
-    logger.error({ error: err }, "Failed to restore sessions from Redis");
-  }
-}
 
 // Creates and configures a Baileys socket for the given session
 // `sessionId` is used purely for logging & debugging purposes
@@ -124,7 +86,7 @@ async function createSession(id) {
     return sessions.get(id);
   }
 
-  const { state, saveCreds } = await useRedisAuthState(id);
+  const { state, saveCreds, clearState } = await makeCacheManagerAuthState({ store: 'memory', ttl: 0 }, id);
   const store = makeInMemoryStore({ logger });
 
   const sock = await makeConfiggedWASocket(id, state, store, saveCreds)
@@ -156,7 +118,7 @@ async function createSession(id) {
         }
         
         const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-        sessions.set(id, {sock: newSock, store, getNewQr});
+        sessions.set(id, {sock: newSock, store, getNewQr, clearState});
         
         // Reset backoff on successful connection
         reconnectionAttempts.delete(id);
@@ -195,7 +157,7 @@ async function createSession(id) {
           setTimeout(async () => {
             try {
               const newSock = await makeConfiggedWASocket(id, state, store, saveCreds);
-              sessions.set(id, {sock: newSock, store, getNewQr});
+              sessions.set(id, {sock: newSock, store, getNewQr, clearState});
               logger.info({ id }, "Reconnection successful");
               // Reset backoff on successful connection
               reconnectionAttempts.delete(id);
@@ -220,7 +182,7 @@ async function createSession(id) {
     });
   }
 
-  const session = { sock, store, getNewQr };
+  const session = { sock, store, getNewQr, clearState };
   sessions.set(id, session);
   return session;
 }
@@ -250,7 +212,13 @@ async function deleteSession(sessionId) {
   
   sessions.delete(sessionId);
   reconnectionAttempts.delete(sessionId); // Clean up tracking
-  await redisClient.del(sessionId); // Fixed: Await Redis deletion
+  if (session && session.clearState) {
+    try {
+      await session.clearState();
+    } catch (err) {
+      logger.warn({ sessionId, error: err }, "Error clearing auth state during session deletion");
+    }
+  }
 }
 
 /**
@@ -265,6 +233,5 @@ export {
   getActiveSessions,
   deleteSession,
   sessions,
-  normalizeJid,
-  restoreSessionsFromRedis
+  normalizeJid
 };

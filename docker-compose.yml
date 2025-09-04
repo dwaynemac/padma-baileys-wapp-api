@@ -1,11 +1,4 @@
 services:
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    networks:
-      - padma-net
-
   padma-wa:
     build: ./ # this will rebuild from Dockerfile in ./
     # image: padma-wa:latest # this will pull the existing image
@@ -13,11 +6,8 @@ services:
       - API_KEY=${apikey} # loads from .env
       - PORT=8300
       - DEVICE_NAME=PADMA LOCAL
-      - REDIS_URL=redis://redis:6379
     ports:
       - "8300:8300"
-    depends_on:
-      - redis
     networks:
       - padma-net
 networks:

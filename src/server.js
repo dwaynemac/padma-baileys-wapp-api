@@ -9,8 +9,7 @@ import {
   deleteSession,
   getActiveSessions,
   sessions,
-  normalizeJid,
-  restoreSessionsFromRedis
+  normalizeJid
 } from "./helpers.js";
 import {
   requireSession,
@@ -321,10 +320,9 @@ app.post("/sessions/:sessionId/chats/:chatId/messages", requireSession, async (r
   }
 });
 
-// Restore sessions from Redis before starting the server
+// Start the server
 (async () => {
   try {
-    await restoreSessionsFromRedis();
     app.listen(PORT, () => logger.info(`PADMA Baileys API server ${version} running`));
   } catch (err) {
     logger.error({ error: err }, "Failed to start server");
